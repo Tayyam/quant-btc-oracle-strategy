@@ -346,7 +346,7 @@ interface Position {
 
 // Run Enhanced Backtest with Risk Management
 export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
-  console.log('Starting enhanced backtest with corrected P&L calculation...');
+  console.log('Starting enhanced backtest with profit-only selling strategy...');
   
   const initialCapital = 10000;
   const riskManager = new RiskManager(initialCapital);
@@ -419,21 +419,23 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
       }
     }
     
-    // إشارة بيع ذكية - بيع جميع المراكز عند توقع هبوط السوق
-    if (signal === 'sell' && positions.length > 0) {
-      const sellAnalysis = detectMarketDownturn(data, indicators, i);
+    // فحص المراكز المربحة فقط للبيع - لا نبيع أبداً بخسارة
+    const positionsToClose: number[] = [];
+    positions.forEach((position, index) => {
+      const priceChange = price - position.entryPrice;
+      const pnlPerUnit = priceChange * leverage;
+      const totalPnl = pnlPerUnit * position.quantity;
       
-      console.log(`🔴 بيع استراتيجي - السبب: ${sellAnalysis.reason}, مستوى الثقة: ${sellAnalysis.confidence}%`);
+      // البيع فقط عند الربح - باستخدام شروط أكثر تحفظاً
+      const isProfit = totalPnl > 0;
+      const shouldTakeProfit = riskManager.shouldTakeProfit(price, position.entryPrice, marketTrend);
       
-      // بيع جميع المراكز مع حساب P&L الصحيح
-      positions.forEach(position => {
+      if (isProfit && shouldTakeProfit) {
         const entryValue = (position.quantity * position.entryPrice) / leverage;
-        const priceChange = price - position.entryPrice;
-        const pnlPerUnit = priceChange * leverage;
-        const totalPnl = pnlPerUnit * position.quantity;
         const exitValue = entryValue + totalPnl;
         
         capital += exitValue;
+        positionsToClose.push(index);
         
         trades.push({
           timestamp: currentData.timestamp,
@@ -443,69 +445,74 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
           pnl: totalPnl
         });
         
-        console.log(`بيع ذكي: الدخول ${position.entryPrice.toFixed(2)}, الخروج ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
-      });
-      
-      // مسح جميع المراكز وإعادة تعيين مستوى الشبكة
-      positions.length = 0;
-      gridLevel = 0;
-    } else {
-      // فحص مراكز الربح العادية (للأمان فقط)
-      const positionsToClose: number[] = [];
-      positions.forEach((position, index) => {
-        if (riskManager.shouldTakeProfit(price, position.entryPrice, marketTrend)) {
-          const entryValue = (position.quantity * position.entryPrice) / leverage;
-          const priceChange = price - position.entryPrice;
-          const pnlPerUnit = priceChange * leverage;
-          const totalPnl = pnlPerUnit * position.quantity;
-          const exitValue = entryValue + totalPnl;
-          
-          capital += exitValue;
-          positionsToClose.push(index);
-          
-          trades.push({
-            timestamp: currentData.timestamp,
-            type: 'sell',
-            price: price,
-            quantity: position.quantity,
-            pnl: totalPnl
-          });
-          
-          console.log(`بيع مربح عادي: الدخول ${position.entryPrice.toFixed(2)}, الخروج ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
-        }
-      });
-      
-      positionsToClose.reverse().forEach(index => {
-        positions.splice(index, 1);
-        gridLevel = Math.max(0, gridLevel - 1);
-      });
-    }
-  }
-  
-  // إغلاق المراكز المتبقية مع حساب P&L الصحيح
-  if (positions.length > 0 && data.length > 0) {
-    const lastPrice = data[data.length - 1].close;
-    positions.forEach(position => {
-      const entryValue = (position.quantity * position.entryPrice) / leverage;
-      const priceChange = lastPrice - position.entryPrice;
-      const pnlPerUnit = priceChange * leverage;
-      const totalPnl = pnlPerUnit * position.quantity;
-      const exitValue = entryValue + totalPnl;
-      
-      capital += exitValue;
-      
-      trades.push({
-        timestamp: data[data.length - 1].timestamp,
-        type: 'sell',
-        price: lastPrice,
-        quantity: position.quantity,
-        pnl: totalPnl
-      });
+        console.log(`💰 بيع مربح: الدخول ${position.entryPrice.toFixed(2)}, الخروج ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
+      } else if (!isProfit) {
+        console.log(`⏳ الاحتفاظ بالمركز الخاسر: الدخول ${position.entryPrice.toFixed(2)}, السعر الحالي ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
+      }
+    });
+    
+    // إزالة المراكز المغلقة
+    positionsToClose.reverse().forEach(index => {
+      positions.splice(index, 1);
+      gridLevel = Math.max(0, gridLevel - 1);
     });
   }
   
+  // إغلاق المراكز المتبقية فقط إذا كانت مربحة في نهاية فترة الاختبار
+  if (positions.length > 0 && data.length > 0) {
+    const lastPrice = data[data.length - 1].close;
+    const positionsToClose: number[] = [];
+    
+    positions.forEach((position, index) => {
+      const priceChange = lastPrice - position.entryPrice;
+      const pnlPerUnit = priceChange * leverage;
+      const totalPnl = pnlPerUnit * position.quantity;
+      
+      // إغلاق فقط المراكز المربحة في نهاية الاختبار
+      if (totalPnl > 0) {
+        const entryValue = (position.quantity * position.entryPrice) / leverage;
+        const exitValue = entryValue + totalPnl;
+        
+        capital += exitValue;
+        positionsToClose.push(index);
+        
+        trades.push({
+          timestamp: data[data.length - 1].timestamp,
+          type: 'sell',
+          price: lastPrice,
+          quantity: position.quantity,
+          pnl: totalPnl
+        });
+        
+        console.log(`📈 إغلاق مربح في نهاية الاختبار: P&L ${totalPnl.toFixed(2)}`);
+      } else {
+        console.log(`📉 ترك مركز خاسر مفتوح: P&L ${totalPnl.toFixed(2)}`);
+      }
+    });
+    
+    // إزالة المراكز المغلقة
+    positionsToClose.reverse().forEach(index => {
+      positions.splice(index, 1);
+    });
+  }
+  
+  // حساب رأس المال النهائي مع المراكز المفتوحة
+  let finalCapital = capital;
+  if (positions.length > 0 && data.length > 0) {
+    const lastPrice = data[data.length - 1].close;
+    const openPositionsValue = positions.reduce((sum, pos) => {
+      const priceChange = lastPrice - pos.entryPrice;
+      const pnlPerUnit = priceChange * leverage;
+      const totalPnl = pnlPerUnit * pos.quantity;
+      const entryValue = (pos.quantity * pos.entryPrice) / leverage;
+      return sum + entryValue + totalPnl;
+    }, 0);
+    finalCapital += openPositionsValue;
+    
+    console.log(`📊 المراكز المفتوحة المتبقية: ${positions.length}, قيمتها: ${openPositionsValue.toFixed(2)}`);
+  }
+  
   // حساب المقاييس
-  const finalCapital = capital;
   const totalReturn = ((finalCapital - initialCapital) / initialCapital) * 100;
   
   const firstDate = new Date(data[0].timestamp);
@@ -539,12 +546,13 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
   );
   const sharpeRatio = returnStdDev > 0 ? (averageReturn / returnStdDev) * Math.sqrt(252) : 0;
   
-  console.log('Enhanced backtest with corrected P&L calculation completed:', {
+  console.log('Enhanced backtest with profit-only selling completed:', {
     totalTrades: trades.length,
     totalReturn,
     winRate,
     finalCapital,
-    strategy: 'Grid System with Corrected P&L Calculation'
+    openPositions: positions.length,
+    strategy: 'Grid System - Profit Only Selling'
   });
   
   return {
