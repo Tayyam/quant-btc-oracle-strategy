@@ -11,15 +11,15 @@ const STRATEGY_PARAMETERS = {
   POSITION_CAPITAL_RATIO: 0.9,
 
   // معاملات المؤشرات التقنية — (تم التعديل حسب نتائج Optuna)
-  SMA_SHORT_PERIOD: 10,
-  SMA_LONG_PERIOD: 85,
-  RSI_PERIOD: 21,
-  BOLLINGER_PERIOD: 16,
-  BOLLINGER_STD_DEV: 1.6,
-  EMA_FAST: 17,
-  EMA_SLOW: 23,
-  MACD_SIGNAL: 7,
-  
+  SMA_SHORT_PERIOD: 15,
+  SMA_LONG_PERIOD: 43,
+  RSI_PERIOD: 23,
+  BOLLINGER_PERIOD: 10,
+  BOLLINGER_STD_DEV: 2.4,
+  EMA_FAST: 14,
+  EMA_SLOW: 26,
+  MACD_SIGNAL: 14,
+
   // معاملات إشارات الشراء
   BUY_SIGNALS: {
     RSI_OVERSOLD_STRONG: 35,
@@ -31,7 +31,7 @@ const STRATEGY_PARAMETERS = {
     VOLUME_PERIOD: 10,
     MIN_BUY_SCORE: 4, // الحد الأدنى لنقاط الشراء
   },
-  
+
   // معاملات إشارات البيع
   SELL_SIGNALS: {
     RSI_OVERBOUGHT_STRONG: 70,
@@ -45,11 +45,12 @@ const STRATEGY_PARAMETERS = {
     MIN_SELL_SCORE: 4, // الحد الأدنى لنقاط البيع
     LOOKBACK_PERIOD: 10, // فترة النظر للخلف للتحليل
   },
-  
+
   // معاملات التحليل العام
   MIN_DATA_POINTS: 50, // الحد الأدنى لنقاط البيانات للتحليل
   TREND_ANALYSIS_PERIOD: 9, // فترة تحليل الاتجاه
 };
+
 
 // Calculate Simple Moving Average
 const calculateSMA = (prices: number[], period: number): number[] => {
