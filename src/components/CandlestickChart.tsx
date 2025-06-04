@@ -2,7 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BacktestData, Trade } from '@/types/trading';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ComposedChart, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter } from 'recharts';
+import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Scatter, Bar } from 'recharts';
 
 interface CandlestickChartProps {
   data: BacktestData[];
@@ -22,6 +22,11 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000
     );
 
+    // حساب قيم الشمعة للعرض كـ bars
+    const bodyLow = Math.min(candle.open, candle.close);
+    const bodyHigh = Math.max(candle.open, candle.close);
+    const isGreen = candle.close > candle.open;
+
     return {
       timestamp: new Date(candle.timestamp).toLocaleDateString('ar'),
       open: candle.open,
@@ -29,6 +34,12 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       low: candle.low,
       close: candle.close,
       volume: candle.volume,
+      bodyLow,
+      bodyHigh,
+      bodyHeight: bodyHigh - bodyLow,
+      isGreen,
+      wickLow: candle.low,
+      wickHigh: candle.high,
       buySignal: buyTrade ? candle.low - (candle.high - candle.low) * 0.1 : null,
       sellSignal: sellTrade ? candle.high + (candle.high - candle.low) * 0.1 : null,
       buyPrice: buyTrade?.price || null,
@@ -36,60 +47,6 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       index
     };
   });
-
-  // مكون الشمعة اليابانية المخصص
-  const Candlestick = (props: any) => {
-    const { payload, x, y, width, height } = props;
-    
-    if (!payload) return null;
-    
-    const { open, high, low, close } = payload;
-    const isGreen = close > open;
-    const bodyHeight = Math.abs(close - open);
-    const bodyY = Math.min(open, close);
-    
-    // تحويل القيم إلى إحداثيات الشاشة
-    const scale = height / (Math.max(...data.map(d => d.high)) - Math.min(...data.map(d => d.low)));
-    const minPrice = Math.min(...data.map(d => d.low));
-    
-    const bodyTop = y + height - ((bodyY - minPrice) * scale);
-    const bodyBottom = y + height - ((bodyY + bodyHeight - minPrice) * scale);
-    const wickTop = y + height - ((high - minPrice) * scale);
-    const wickBottom = y + height - ((low - minPrice) * scale);
-    
-    return (
-      <g>
-        {/* الفتيل العلوي */}
-        <line
-          x1={x + width / 2}
-          y1={wickTop}
-          x2={x + width / 2}
-          y2={Math.min(bodyTop, bodyBottom)}
-          stroke={isGreen ? '#10B981' : '#EF4444'}
-          strokeWidth={1}
-        />
-        {/* الفتيل السفلي */}
-        <line
-          x1={x + width / 2}
-          y1={Math.max(bodyTop, bodyBottom)}
-          x2={x + width / 2}
-          y2={wickBottom}
-          stroke={isGreen ? '#10B981' : '#EF4444'}
-          strokeWidth={1}
-        />
-        {/* جسم الشمعة */}
-        <rect
-          x={x + width * 0.25}
-          y={Math.min(bodyTop, bodyBottom)}
-          width={width * 0.5}
-          height={Math.abs(bodyTop - bodyBottom) || 1}
-          fill={isGreen ? '#10B981' : '#EF4444'}
-          stroke={isGreen ? '#059669' : '#DC2626'}
-          strokeWidth={1}
-        />
-      </g>
-    );
-  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -113,6 +70,54 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       label: "بيع",
       color: "#EF4444",
     },
+  };
+
+  // مكون مخصص لرسم الشموع
+  const CandlestickBar = (props: any) => {
+    const { payload, x, y, width, height } = props;
+    
+    if (!payload) return null;
+    
+    const { high, low, bodyLow, bodyHigh, isGreen } = payload;
+    
+    // حساب المقياس والمواضع
+    const minPrice = Math.min(...data.map(d => d.low));
+    const maxPrice = Math.max(...data.map(d => d.high));
+    const priceRange = maxPrice - minPrice;
+    const scale = height / priceRange;
+    
+    // مواضع الفتائل والجسم
+    const wickTopY = y + height - ((high - minPrice) * scale);
+    const wickBottomY = y + height - ((low - minPrice) * scale);
+    const bodyTopY = y + height - ((bodyHigh - minPrice) * scale);
+    const bodyBottomY = y + height - ((bodyLow - minPrice) * scale);
+    
+    const centerX = x + width / 2;
+    const bodyWidth = Math.max(width * 0.6, 2);
+    
+    return (
+      <g>
+        {/* الفتيل */}
+        <line
+          x1={centerX}
+          y1={wickTopY}
+          x2={centerX}
+          y2={wickBottomY}
+          stroke={isGreen ? '#10B981' : '#EF4444'}
+          strokeWidth={1}
+        />
+        {/* جسم الشمعة */}
+        <rect
+          x={centerX - bodyWidth / 2}
+          y={bodyTopY}
+          width={bodyWidth}
+          height={Math.max(bodyBottomY - bodyTopY, 1)}
+          fill={isGreen ? '#10B981' : '#EF4444'}
+          stroke={isGreen ? '#059669' : '#DC2626'}
+          strokeWidth={1}
+        />
+      </g>
+    );
   };
 
   return (
@@ -186,6 +191,12 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
                 }}
               />
               
+              {/* رسم الشموع باستخدام Bar مع shape مخصص */}
+              <Bar
+                dataKey="bodyHeight"
+                shape={(props) => <CandlestickBar {...props} />}
+              />
+              
               {/* إشارات الشراء */}
               <Scatter
                 dataKey="buySignal"
@@ -197,17 +208,17 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
                       <circle
                         cx={props.cx}
                         cy={props.cy}
-                        r={6}
+                        r={8}
                         fill="#10B981"
                         stroke="#065F46"
                         strokeWidth={2}
                       />
                       <text
                         x={props.cx}
-                        y={props.cy + 2}
+                        y={props.cy + 3}
                         textAnchor="middle"
                         fill="white"
-                        fontSize="10"
+                        fontSize="12"
                         fontWeight="bold"
                       >
                         B
@@ -228,17 +239,17 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
                       <circle
                         cx={props.cx}
                         cy={props.cy}
-                        r={6}
+                        r={8}
                         fill="#EF4444"
                         stroke="#7F1D1D"
                         strokeWidth={2}
                       />
                       <text
                         x={props.cx}
-                        y={props.cy + 2}
+                        y={props.cy + 3}
                         textAnchor="middle"
                         fill="white"
-                        fontSize="10"
+                        fontSize="12"
                         fontWeight="bold"
                       >
                         S
