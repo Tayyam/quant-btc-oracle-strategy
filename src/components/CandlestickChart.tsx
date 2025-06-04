@@ -2,7 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BacktestData, Trade } from '@/types/trading';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Scatter, Bar } from 'recharts';
+import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Scatter, Cell } from 'recharts';
 
 interface CandlestickChartProps {
   data: BacktestData[];
@@ -22,11 +22,6 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000
     );
 
-    // حساب قيم الشمعة للعرض كـ bars
-    const bodyLow = Math.min(candle.open, candle.close);
-    const bodyHigh = Math.max(candle.open, candle.close);
-    const isGreen = candle.close > candle.open;
-
     return {
       timestamp: new Date(candle.timestamp).toLocaleDateString('ar'),
       open: candle.open,
@@ -34,12 +29,6 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       low: candle.low,
       close: candle.close,
       volume: candle.volume,
-      bodyLow,
-      bodyHigh,
-      bodyHeight: bodyHigh - bodyLow,
-      isGreen,
-      wickLow: candle.low,
-      wickHigh: candle.high,
       buySignal: buyTrade ? candle.low - (candle.high - candle.low) * 0.1 : null,
       sellSignal: sellTrade ? candle.high + (candle.high - candle.low) * 0.1 : null,
       buyPrice: buyTrade?.price || null,
@@ -73,45 +62,65 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
   };
 
   // مكون مخصص لرسم الشموع
-  const CandlestickBar = (props: any) => {
-    const { payload, x, y, width, height } = props;
+  const renderCandlestick = (props: any) => {
+    const { payload } = props;
+    if (!payload || !payload.length) return null;
     
-    if (!payload) return null;
-    
-    const { high, low, bodyLow, bodyHigh, isGreen } = payload;
+    const data = payload[0].payload;
+    const { open, high, low, close } = data;
     
     // حساب المقياس والمواضع
-    const minPrice = Math.min(...data.map(d => d.low));
-    const maxPrice = Math.max(...data.map(d => d.high));
+    const minPrice = Math.min(...chartData.map(d => d.low));
+    const maxPrice = Math.max(...chartData.map(d => d.high));
     const priceRange = maxPrice - minPrice;
-    const scale = height / priceRange;
     
-    // مواضع الفتائل والجسم
-    const wickTopY = y + height - ((high - minPrice) * scale);
-    const wickBottomY = y + height - ((low - minPrice) * scale);
-    const bodyTopY = y + height - ((bodyHigh - minPrice) * scale);
-    const bodyBottomY = y + height - ((bodyLow - minPrice) * scale);
+    // حساب نسبة الموضع لكل سعر
+    const getY = (price: number) => {
+      return ((maxPrice - price) / priceRange) * 400 + 50; // 400 هو ارتفاع الرسم البياني تقريباً
+    };
+    
+    const x = props.viewBox?.x || 0;
+    const width = props.viewBox?.width || 0;
     
     const centerX = x + width / 2;
-    const bodyWidth = Math.max(width * 0.6, 2);
+    const candleWidth = Math.max(width * 0.6, 2);
+    
+    const highY = getY(high);
+    const lowY = getY(low);
+    const openY = getY(open);
+    const closeY = getY(close);
+    
+    const isGreen = close > open;
+    const bodyTop = Math.min(openY, closeY);
+    const bodyBottom = Math.max(openY, closeY);
+    const bodyHeight = Math.max(bodyBottom - bodyTop, 1);
     
     return (
       <g>
-        {/* الفتيل */}
+        {/* الفتيل العلوي */}
         <line
           x1={centerX}
-          y1={wickTopY}
+          y1={highY}
           x2={centerX}
-          y2={wickBottomY}
+          y2={bodyTop}
+          stroke={isGreen ? '#10B981' : '#EF4444'}
+          strokeWidth={1}
+        />
+        {/* الفتيل السفلي */}
+        <line
+          x1={centerX}
+          y1={bodyBottom}
+          x2={centerX}
+          y2={lowY}
           stroke={isGreen ? '#10B981' : '#EF4444'}
           strokeWidth={1}
         />
         {/* جسم الشمعة */}
         <rect
-          x={centerX - bodyWidth / 2}
-          y={bodyTopY}
-          width={bodyWidth}
-          height={Math.max(bodyBottomY - bodyTopY, 1)}
+          x={centerX - candleWidth / 2}
+          y={bodyTop}
+          width={candleWidth}
+          height={bodyHeight}
           fill={isGreen ? '#10B981' : '#EF4444'}
           stroke={isGreen ? '#059669' : '#DC2626'}
           strokeWidth={1}
@@ -191,11 +200,47 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
                 }}
               />
               
-              {/* رسم الشموع باستخدام Bar مع shape مخصص */}
-              <Bar
-                dataKey="bodyHeight"
-                shape={(props) => <CandlestickBar {...props} />}
+              {/* رسم خط بسيط لعرض الشموع */}
+              <Scatter
+                dataKey="high"
+                shape={() => null}
+                isAnimationActive={false}
               />
+              
+              {/* رسم الشموع مخصص */}
+              {chartData.map((item, index) => {
+                const { open, high, low, close } = item;
+                const isGreen = close > open;
+                
+                // حساب موقع X لكل شمعة
+                const chartWidth = 800; // عرض تقريبي للرسم البياني
+                const x = (index / (chartData.length - 1)) * chartWidth;
+                const candleWidth = Math.max(chartWidth / chartData.length * 0.6, 2);
+                
+                return (
+                  <g key={index}>
+                    {/* الفتيل */}
+                    <line
+                      x1={x}
+                      y1={50 + ((Math.max(...chartData.map(d => d.high)) - high) / (Math.max(...chartData.map(d => d.high)) - Math.min(...chartData.map(d => d.low)))) * 400}
+                      x2={x}
+                      y2={50 + ((Math.max(...chartData.map(d => d.high)) - low) / (Math.max(...chartData.map(d => d.high)) - Math.min(...chartData.map(d => d.low)))) * 400}
+                      stroke={isGreen ? '#10B981' : '#EF4444'}
+                      strokeWidth={1}
+                    />
+                    {/* جسم الشمعة */}
+                    <rect
+                      x={x - candleWidth / 2}
+                      y={50 + ((Math.max(...chartData.map(d => d.high)) - Math.max(open, close)) / (Math.max(...chartData.map(d => d.high)) - Math.min(...chartData.map(d => d.low)))) * 400}
+                      width={candleWidth}
+                      height={Math.max(Math.abs(((close - open) / (Math.max(...chartData.map(d => d.high)) - Math.min(...chartData.map(d => d.low)))) * 400), 1)}
+                      fill={isGreen ? '#10B981' : '#EF4444'}
+                      stroke={isGreen ? '#059669' : '#DC2626'}
+                      strokeWidth={1}
+                    />
+                  </g>
+                );
+              })}
               
               {/* إشارات الشراء */}
               <Scatter
