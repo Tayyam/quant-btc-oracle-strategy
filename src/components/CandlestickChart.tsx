@@ -2,7 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BacktestData, Trade } from '@/types/trading';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceDot, Cell } from 'recharts';
+import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Scatter, Cell } from 'recharts';
 
 interface CandlestickChartProps {
   data: BacktestData[];
@@ -14,7 +14,7 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
   const chartData = data.map((candle, index) => {
     const buyTrade = trades.find(trade => 
       trade.type === 'buy' && 
-      Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000 // في نفس الساعة
+      Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000
     );
     
     const sellTrade = trades.find(trade => 
@@ -29,8 +29,8 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       low: candle.low,
       close: candle.close,
       volume: candle.volume,
-      buySignal: buyTrade ? candle.low - (candle.high - candle.low) * 0.05 : null,
-      sellSignal: sellTrade ? candle.high + (candle.high - candle.low) * 0.05 : null,
+      buySignal: buyTrade ? candle.low - 100 : null,
+      sellSignal: sellTrade ? candle.high + 100 : null,
       buyPrice: buyTrade?.price || null,
       sellPrice: sellTrade?.price || null,
       index
@@ -61,34 +61,29 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
     },
   };
 
-  // مكون مخصص لرسم الشموع داخل نظام Recharts
-  const CandlestickBar = (props: any) => {
+  // مكون مخصص لرسم الشموع
+  const CustomCandlestick = (props: any) => {
     const { payload, x, y, width, height } = props;
     
-    if (!payload || !x || !y || !width || !height) return null;
+    if (!payload) return null;
     
     const { open, high, low, close } = payload;
-    
-    // حساب النطاق السعري
-    const priceRange = high - low;
-    const candleWidth = Math.max(width * 0.8, 4);
-    const centerX = x + width / 2;
-    
-    // حساب المواضع بناءً على النطاق الفعلي للرسم البياني
-    const getYPosition = (price: number) => {
-      const ratio = (high - price) / priceRange;
-      return y + ratio * height;
-    };
-    
-    const highY = getYPosition(high);
-    const lowY = getYPosition(low);
-    const openY = getYPosition(open);
-    const closeY = getYPosition(close);
-    
     const isGreen = close > open;
-    const bodyTop = Math.min(openY, closeY);
-    const bodyBottom = Math.max(openY, closeY);
-    const bodyHeight = Math.max(bodyBottom - bodyTop, 2);
+    
+    // حساب المواضع
+    const centerX = x + width / 2;
+    const bodyTop = Math.min(open, close);
+    const bodyBottom = Math.max(open, close);
+    const bodyHeight = Math.abs(close - open);
+    
+    // تحويل الأسعار إلى مواضع على الشاشة
+    const yScale = height / (Math.max(...chartData.map(d => d.high)) - Math.min(...chartData.map(d => d.low)));
+    const minPrice = Math.min(...chartData.map(d => d.low));
+    
+    const highY = y + height - (high - minPrice) * yScale;
+    const lowY = y + height - (low - minPrice) * yScale;
+    const bodyTopY = y + height - (bodyTop - minPrice) * yScale;
+    const bodyBottomY = y + height - (bodyBottom - minPrice) * yScale;
     
     return (
       <g>
@@ -97,14 +92,14 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
           x1={centerX}
           y1={highY}
           x2={centerX}
-          y2={bodyTop}
+          y2={bodyTopY}
           stroke={isGreen ? '#10B981' : '#EF4444'}
           strokeWidth={1}
         />
         {/* الفتيل السفلي */}
         <line
           x1={centerX}
-          y1={bodyBottom}
+          y1={bodyBottomY}
           x2={centerX}
           y2={lowY}
           stroke={isGreen ? '#10B981' : '#EF4444'}
@@ -112,10 +107,10 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
         />
         {/* جسم الشمعة */}
         <rect
-          x={centerX - candleWidth / 2}
-          y={bodyTop}
-          width={candleWidth}
-          height={bodyHeight}
+          x={centerX - width * 0.3}
+          y={bodyTopY}
+          width={width * 0.6}
+          height={Math.max(bodyHeight * yScale, 2)}
           fill={isGreen ? '#10B981' : '#EF4444'}
           stroke={isGreen ? '#059669' : '#DC2626'}
           strokeWidth={1}
@@ -134,20 +129,22 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart 
               data={chartData} 
-              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+              margin={{ top: 20, right: 30, left: 60, bottom: 60 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis 
                 dataKey="timestamp" 
                 stroke="#9CA3AF"
-                interval="preserveStartEnd"
-                tick={{ fontSize: 12 }}
-                height={60}
+                tick={{ fontSize: 10 }}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+                interval={Math.floor(chartData.length / 10)}
               />
               <YAxis 
                 stroke="#9CA3AF"
-                domain={['dataMin - 500', 'dataMax + 500']}
                 tickFormatter={formatCurrency}
+                domain={['dataMin - 500', 'dataMax + 500']}
                 width={80}
               />
               
@@ -201,96 +198,73 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
               />
               
               {/* رسم الشموع اليابانية */}
-              {chartData.map((item, index) => {
-                return (
-                  <ReferenceDot
-                    key={`candle-${index}`}
-                    x={index}
-                    y={item.high}
-                    r={0}
-                    shape={<CandlestickBar />}
-                    isFront={false}
-                  />
-                );
-              })}
+              <Scatter
+                dataKey="close"
+                shape={<CustomCandlestick />}
+                fill="transparent"
+              />
               
               {/* إشارات الشراء */}
-              {chartData.map((item, index) => {
-                if (!item.buySignal) return null;
-                return (
-                  <ReferenceDot
-                    key={`buy-${index}`}
-                    x={index}
-                    y={item.buySignal}
-                    r={8}
-                    fill="#10B981"
-                    stroke="#065F46"
-                    strokeWidth={2}
-                    shape={(props) => (
-                      <g>
-                        <circle
-                          cx={props.cx}
-                          cy={props.cy}
-                          r={8}
-                          fill="#10B981"
-                          stroke="#065F46"
-                          strokeWidth={2}
-                        />
-                        <text
-                          x={props.cx}
-                          y={props.cy + 3}
-                          textAnchor="middle"
-                          fill="white"
-                          fontSize="12"
-                          fontWeight="bold"
-                        >
-                          B
-                        </text>
-                      </g>
-                    )}
-                    isFront={true}
-                  />
-                );
-              })}
+              <Scatter
+                dataKey="buySignal"
+                fill="#10B981"
+                shape={(props: any) => {
+                  if (!props.payload.buySignal) return null;
+                  return (
+                    <g>
+                      <circle
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={8}
+                        fill="#10B981"
+                        stroke="#065F46"
+                        strokeWidth={2}
+                      />
+                      <text
+                        x={props.cx}
+                        y={props.cy + 3}
+                        textAnchor="middle"
+                        fill="white"
+                        fontSize="12"
+                        fontWeight="bold"
+                      >
+                        B
+                      </text>
+                    </g>
+                  );
+                }}
+              />
               
               {/* إشارات البيع */}
-              {chartData.map((item, index) => {
-                if (!item.sellSignal) return null;
-                return (
-                  <ReferenceDot
-                    key={`sell-${index}`}
-                    x={index}
-                    y={item.sellSignal}
-                    r={8}
-                    fill="#EF4444"
-                    stroke="#7F1D1D"
-                    strokeWidth={2}
-                    shape={(props) => (
-                      <g>
-                        <circle
-                          cx={props.cx}
-                          cy={props.cy}
-                          r={8}
-                          fill="#EF4444"
-                          stroke="#7F1D1D"
-                          strokeWidth={2}
-                        />
-                        <text
-                          x={props.cx}
-                          y={props.cy + 3}
-                          textAnchor="middle"
-                          fill="white"
-                          fontSize="12"
-                          fontWeight="bold"
-                        >
-                          S
-                        </text>
-                      </g>
-                    )}
-                    isFront={true}
-                  />
-                );
-              })}
+              <Scatter
+                dataKey="sellSignal"
+                fill="#EF4444"
+                shape={(props: any) => {
+                  if (!props.payload.sellSignal) return null;
+                  return (
+                    <g>
+                      <circle
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={8}
+                        fill="#EF4444"
+                        stroke="#7F1D1D"
+                        strokeWidth={2}
+                      />
+                      <text
+                        x={props.cx}
+                        y={props.cy + 3}
+                        textAnchor="middle"
+                        fill="white"
+                        fontSize="12"
+                        fontWeight="bold"
+                      >
+                        S
+                      </text>
+                    </g>
+                  );
+                }}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </ChartContainer>
