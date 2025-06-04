@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Activity } from 'lucide-react';
 import { StrategyMetrics, BacktestData } from '@/types/trading';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import CandlestickChart from './CandlestickChart';
 
 interface StrategyResultsProps {
   results: StrategyMetrics;
@@ -81,8 +82,8 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-white mb-2">نتائج اختبار الاستراتيجية</h2>
-        <p className="text-gray-300">تحليل شامل لأداء الاستراتيجية على البيانات التاريخية</p>
+        <h2 className="text-3xl font-bold text-white mb-2">نتائج الاستراتيجية المحسنة</h2>
+        <p className="text-gray-300">نظام إدارة المخاطر مع الشبكة والرافعة المالية 2x</p>
       </div>
 
       {/* Key Metrics */}
@@ -90,7 +91,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
         <MetricCard
           title="العائد الإجمالي"
           value={results.totalReturn}
-          description="النسبة المئوية للربح/الخسارة"
+          description="مع نظام إدارة المخاطر"
           icon={TrendingUp}
           format="percentage"
         />
@@ -145,8 +146,11 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
       </div>
 
       {/* Charts */}
-      <Tabs defaultValue="equity" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 bg-white/10">
+      <Tabs defaultValue="candlestick" className="w-full">
+        <TabsList className="grid w-full grid-cols-4 bg-white/10">
+          <TabsTrigger value="candlestick" className="text-white data-[state=active]:bg-purple-500">
+            الشموع اليابانية
+          </TabsTrigger>
           <TabsTrigger value="equity" className="text-white data-[state=active]:bg-purple-500">
             منحنى رأس المال
           </TabsTrigger>
@@ -154,16 +158,20 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
             حركة السعر
           </TabsTrigger>
           <TabsTrigger value="trades" className="text-white data-[state=active]:bg-purple-500">
-            الصفقات
+            تفاصيل الصفقات
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="candlestick" className="space-y-4">
+          <CandlestickChart data={data} trades={results.trades} />
+        </TabsContent>
 
         <TabsContent value="equity" className="space-y-4">
           <Card className="bg-white/10 backdrop-blur-lg border-white/20">
             <CardHeader>
               <CardTitle className="text-white">منحنى رأس المال والانخفاض</CardTitle>
               <CardDescription className="text-gray-300">
-                تطور قيمة المحفظة عبر الزمن
+                تطور قيمة المحفظة عبر الزمن مع نظام الشبكة
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -262,7 +270,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="bg-white/10 backdrop-blur-lg border-white/20">
               <CardHeader>
-                <CardTitle className="text-white">إحصائيات الصفقات</CardTitle>
+                <CardTitle className="text-white">إحصائيات الصفقات المحسنة</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex justify-between">
@@ -285,34 +293,62 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                   <span className="text-gray-300">متوسط الخسارة</span>
                   <span className="text-red-400 font-semibold">{formatCurrency(results.averageLoss)}</span>
                 </div>
+                <div className="border-t border-gray-600 pt-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">نظام الإدارة</span>
+                    <span className="text-purple-400 font-semibold">شبكة 8 مستويات</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">الرافعة المالية</span>
+                    <span className="text-purple-400 font-semibold">2x</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">حماية التصفية</span>
+                    <span className="text-green-400 font-semibold">30,000 USD</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
             <Card className="bg-white/10 backdrop-blur-lg border-white/20">
               <CardHeader>
-                <CardTitle className="text-white">آخر الصفقات</CardTitle>
+                <CardTitle className="text-white">سجل الصفقات المفصل</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {results.trades.slice(-10).reverse().map((trade, index) => (
+                  {results.trades.slice(-15).reverse().map((trade, index) => (
                     <div 
                       key={index} 
-                      className="flex justify-between items-center p-2 bg-white/5 rounded"
+                      className="flex justify-between items-center p-3 bg-white/5 rounded border-l-4 border-l-purple-500"
                     >
                       <div>
-                        <span className={`text-sm font-medium ${
-                          trade.type === 'buy' ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {trade.type === 'buy' ? 'شراء' : 'بيع'}
-                        </span>
-                        <div className="text-xs text-gray-400">
-                          {new Date(trade.timestamp).toLocaleDateString('ar')}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium px-2 py-1 rounded ${
+                            trade.type === 'buy' 
+                              ? 'bg-green-500/20 text-green-400' 
+                              : 'bg-red-500/20 text-red-400'
+                          }`}>
+                            {trade.type === 'buy' ? '🟢 شراء' : '🔴 بيع'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {new Date(trade.timestamp).toLocaleDateString('ar')} - {new Date(trade.timestamp).toLocaleTimeString('ar')}
+                        </div>
+                        <div className="text-xs text-gray-300 mt-1">
+                          الكمية: {trade.quantity.toFixed(6)} BTC
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm text-white">
+                        <div className="text-sm text-white font-medium">
                           {formatCurrency(trade.price)}
                         </div>
+                        {trade.pnl && (
+                          <div className={`text-sm font-medium ${
+                            trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {trade.pnl >= 0 ? '+' : ''}{formatCurrency(trade.pnl)}
+                          </div>
+                        )}
                         {trade.pnl && (
                           <div className={`text-xs ${
                             trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
