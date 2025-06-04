@@ -25,6 +25,16 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
+  // حساب قيمة المحفظة في وقت كل صفقة
+  const getPortfolioValueAtTrade = (tradeIndex: number) => {
+    const equityPoint = results.equityCurve.find((point, index) => {
+      const tradeTimestamp = new Date(results.trades[tradeIndex].timestamp).getTime();
+      const pointTimestamp = new Date(point.timestamp).getTime();
+      return Math.abs(pointTimestamp - tradeTimestamp) < 3600000; // نفس الساعة
+    });
+    return equityPoint ? equityPoint.equity : results.initialCapital;
+  };
+
   const priceChartData = data.map((item, index) => ({
     timestamp: new Date(item.timestamp).toLocaleDateString('ar'),
     price: item.close,
@@ -267,102 +277,88 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
         </TabsContent>
 
         <TabsContent value="trades" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="bg-white/10 backdrop-blur-lg border-white/20">
-              <CardHeader>
-                <CardTitle className="text-white">إحصائيات الصفقات المحسنة</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-gray-300">إجمالي الصفقات</span>
-                  <span className="text-white font-semibold">{results.totalTrades}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-300">الصفقات الرابحة</span>
-                  <span className="text-green-400 font-semibold">{results.winningTrades}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-300">الصفقات الخاسرة</span>
-                  <span className="text-red-400 font-semibold">{results.losingTrades}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-300">متوسط الربح</span>
-                  <span className="text-green-400 font-semibold">{formatCurrency(results.averageWin)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-300">متوسط الخسارة</span>
-                  <span className="text-red-400 font-semibold">{formatCurrency(results.averageLoss)}</span>
-                </div>
-                <div className="border-t border-gray-600 pt-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">نظام الإدارة</span>
-                    <span className="text-purple-400 font-semibold">شبكة 8 مستويات</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">الرافعة المالية</span>
-                    <span className="text-purple-400 font-semibold">2x</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">حماية التصفية</span>
-                    <span className="text-green-400 font-semibold">30,000 USD</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur-lg border-white/20">
-              <CardHeader>
-                <CardTitle className="text-white">سجل الصفقات المفصل</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {results.trades.slice(-15).reverse().map((trade, index) => (
+          <Card className="bg-white/10 backdrop-blur-lg border-white/20">
+            <CardHeader>
+              <CardTitle className="text-white">سجل الصفقات المفصل</CardTitle>
+              <CardDescription className="text-gray-300">
+                تفاصيل دقيقة لكل صفقة مع قيم USDT ونسبة المحفظة
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {results.trades.slice(-20).reverse().map((trade, index) => {
+                  const portfolioValue = getPortfolioValueAtTrade(results.trades.length - 1 - index);
+                  const tradeValueUSDT = trade.quantity * trade.price;
+                  const portfolioPercentage = (tradeValueUSDT / portfolioValue) * 100;
+                  
+                  return (
                     <div 
                       key={index} 
-                      className="flex justify-between items-center p-3 bg-white/5 rounded border-l-4 border-l-purple-500"
+                      className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-colors"
                     >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium px-2 py-1 rounded ${
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <span className={`text-sm font-bold px-3 py-1 rounded-full ${
                             trade.type === 'buy' 
-                              ? 'bg-green-500/20 text-green-400' 
-                              : 'bg-red-500/20 text-red-400'
+                              ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                              : 'bg-red-500/20 text-red-400 border border-red-500/30'
                           }`}>
                             {trade.type === 'buy' ? '🟢 شراء' : '🔴 بيع'}
                           </span>
+                          <div className="text-xs text-gray-400">
+                            {new Date(trade.timestamp).toLocaleDateString('ar')} - {new Date(trade.timestamp).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-400 mt-1">
-                          {new Date(trade.timestamp).toLocaleDateString('ar')} - {new Date(trade.timestamp).toLocaleTimeString('ar')}
+                        {trade.pnl && (
+                          <div className={`text-right ${
+                            trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            <div className="text-sm font-bold">
+                              {trade.pnl >= 0 ? '+' : ''}{formatCurrency(trade.pnl)}
+                            </div>
+                            <div className="text-xs">
+                              {formatPercentage((trade.pnl / portfolioValue) * 100)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">السعر:</span>
+                            <span className="text-white font-medium">{formatCurrency(trade.price)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">الكمية:</span>
+                            <span className="text-white font-medium">{trade.quantity.toFixed(6)} BTC</span>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-300 mt-1">
-                          الكمية: {trade.quantity.toFixed(6)} BTC
+                        
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">القيمة USDT:</span>
+                            <span className="text-white font-medium">{formatCurrency(tradeValueUSDT)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">من المحفظة:</span>
+                            <span className="text-purple-400 font-medium">{portfolioPercentage.toFixed(2)}%</span>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm text-white font-medium">
-                          {formatCurrency(trade.price)}
+                      
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-400">قيمة المحفظة:</span>
+                          <span className="text-gray-300">{formatCurrency(portfolioValue)}</span>
                         </div>
-                        {trade.pnl && (
-                          <div className={`text-sm font-medium ${
-                            trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
-                          }`}>
-                            {trade.pnl >= 0 ? '+' : ''}{formatCurrency(trade.pnl)}
-                          </div>
-                        )}
-                        {trade.pnl && (
-                          <div className={`text-xs ${
-                            trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
-                          }`}>
-                            {formatPercentage((trade.pnl / results.initialCapital) * 100)}
-                          </div>
-                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
