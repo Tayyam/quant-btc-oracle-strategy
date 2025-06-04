@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -13,9 +12,22 @@ interface StrategyResultsProps {
   data: BacktestData[];
 }
 
+interface Position {
+  id: number;
+  entryTime: string;
+  exitTime: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  type: 'long' | 'short';
+  pnl: number;
+  duration: string;
+  portfolioValue: number;
+}
+
 const StrategyResults = ({ results, data }: StrategyResultsProps) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const tradesPerPage = 20;
+  const positionsPerPage = 20;
   
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -29,6 +41,51 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
   const formatPercentage = (value: number) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
+
+  // تحويل الصفقات إلى مراكز
+  const positions = useMemo(() => {
+    const positionsList: Position[] = [];
+    let currentPosition: any = null;
+    let positionId = 1;
+
+    results.trades.forEach((trade, index) => {
+      if (trade.type === 'buy' && !currentPosition) {
+        // بداية مركز طويل
+        currentPosition = {
+          id: positionId++,
+          entryTime: trade.timestamp,
+          entryPrice: trade.price,
+          quantity: trade.quantity,
+          type: 'long' as const,
+        };
+      } else if (trade.type === 'sell' && currentPosition) {
+        // إغلاق مركز طويل
+        const entryTime = new Date(currentPosition.entryTime);
+        const exitTime = new Date(trade.timestamp);
+        const duration = Math.round((exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60)); // بالساعات
+        
+        const pnl = (trade.price - currentPosition.entryPrice) * currentPosition.quantity;
+        const equityPoint = results.equityCurve.find(point => {
+          const tradeTimestamp = new Date(trade.timestamp).getTime();
+          const pointTimestamp = new Date(point.timestamp).getTime();
+          return Math.abs(pointTimestamp - tradeTimestamp) < 3600000;
+        });
+        
+        positionsList.push({
+          ...currentPosition,
+          exitTime: trade.timestamp,
+          exitPrice: trade.price,
+          pnl,
+          duration: duration > 24 ? `${Math.round(duration / 24)} أيام` : `${duration} ساعة`,
+          portfolioValue: equityPoint ? equityPoint.equity : results.initialCapital,
+        });
+        
+        currentPosition = null;
+      }
+    });
+
+    return positionsList.reverse(); // عرض أحدث المراكز أولاً
+  }, [results.trades, results.equityCurve, results.initialCapital]);
 
   // تحسين البيانات للرسوم البيانية - أخذ عينة كل 10 نقاط للبيانات الكبيرة
   const sampledData = useMemo(() => {
@@ -65,17 +122,13 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     }));
   }, [results.equityCurve]);
 
-  // تقسيم الصفقات للصفحات
-  const totalPages = Math.ceil(results.trades.length / tradesPerPage);
-  const paginatedTrades = useMemo(() => {
-    const reversedTrades = [...results.trades].reverse();
-    const startIndex = (currentPage - 1) * tradesPerPage;
-    const endIndex = startIndex + tradesPerPage;
-    return reversedTrades.slice(startIndex, endIndex).map((trade, reverseIndex) => {
-      const actualIndex = results.trades.length - 1 - (startIndex + reverseIndex);
-      return { trade, actualIndex };
-    });
-  }, [results.trades, currentPage, tradesPerPage]);
+  // تقسيم المراكز للصفحات
+  const totalPages = Math.ceil(positions.length / positionsPerPage);
+  const paginatedPositions = useMemo(() => {
+    const startIndex = (currentPage - 1) * positionsPerPage;
+    const endIndex = startIndex + positionsPerPage;
+    return positions.slice(startIndex, endIndex);
+  }, [positions, currentPage, positionsPerPage]);
 
   const MetricCard = ({ 
     title, 
@@ -124,7 +177,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
         <h2 className="text-3xl font-bold text-white mb-2">نتائج الاستراتيجية المحسنة</h2>
         <p className="text-gray-300">نظام إدارة المخاطر مع الشبكة والرافعة المالية 2x</p>
         <p className="text-sm text-gray-400 mt-1">
-          تم تحليل {data.length.toLocaleString()} سجل • {results.trades.length} صفقة
+          تم تحليل {data.length.toLocaleString()} سجل • {positions.length} مركز
         </p>
       </div>
 
@@ -168,7 +221,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
         <MetricCard
           title="معدل الربح"
           value={results.winRate}
-          description={`من ${results.totalTrades} صفقة`}
+          description={`من ${positions.length} مركز`}
           icon={Target}
           format="percentage"
         />
@@ -182,7 +235,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
         <MetricCard
           title="متوسط الربح"
           value={results.averageWin}
-          description="متوسط ربح الصفقات الرابحة"
+          description="متوسط ربح المراكز الرابحة"
           icon={TrendingUp}
         />
       </div>
@@ -199,8 +252,8 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           <TabsTrigger value="price" className="text-white data-[state=active]:bg-purple-500">
             حركة السعر
           </TabsTrigger>
-          <TabsTrigger value="trades" className="text-white data-[state=active]:bg-purple-500">
-            تفاصيل الصفقات
+          <TabsTrigger value="positions" className="text-white data-[state=active]:bg-purple-500">
+            تفاصيل المراكز
           </TabsTrigger>
         </TabsList>
 
@@ -318,15 +371,15 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="trades" className="space-y-4">
+        <TabsContent value="positions" className="space-y-4">
           <Card className="bg-white/10 backdrop-blur-lg border-white/20">
             <CardHeader>
-              <CardTitle className="text-white">سجل الصفقات المفصل</CardTitle>
+              <CardTitle className="text-white">سجل المراكز المفصل</CardTitle>
               <CardDescription className="text-gray-300">
-                تفاصيل دقيقة لجميع الصفقات ({results.trades.length} صفقة) مع قيم USDT ونسبة المحفظة والرافعة المالية
+                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) مع قيم USDT والرافعة المالية
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-sm">
-                    الصفحة {currentPage} من {totalPages} • عرض {tradesPerPage} صفقة لكل صفحة
+                    الصفحة {currentPage} من {totalPages} • عرض {positionsPerPage} مركز لكل صفحة
                   </span>
                 </div>
               </CardDescription>
@@ -346,7 +399,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                 </Button>
                 
                 <span className="text-sm text-gray-300">
-                  عرض الصفقات {(currentPage - 1) * tradesPerPage + 1} - {Math.min(currentPage * tradesPerPage, results.trades.length)} من {results.trades.length}
+                  عرض المراكز {(currentPage - 1) * positionsPerPage + 1} - {Math.min(currentPage * positionsPerPage, positions.length)} من {positions.length}
                 </span>
                 
                 <Button
@@ -362,60 +415,62 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
               </div>
 
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {paginatedTrades.map(({ trade, actualIndex }) => {
-                  const portfolioValue = getPortfolioValueAtTrade(actualIndex);
-                  const tradeValueUSDT = trade.quantity * trade.price;
-                  const portfolioPercentage = (tradeValueUSDT / portfolioValue) * 100;
+                {paginatedPositions.map((position) => {
+                  const tradeValueUSDT = position.quantity * position.entryPrice;
+                  const portfolioPercentage = (tradeValueUSDT / position.portfolioValue) * 100;
                   const leverage = 2;
                   const requiredCapital = tradeValueUSDT / leverage;
+                  const pnlPercentage = (position.pnl / position.portfolioValue) * 100;
                   
                   return (
                     <div 
-                      key={actualIndex} 
+                      key={position.id} 
                       className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-colors"
                     >
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center gap-3">
                           <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-                            trade.type === 'buy' 
+                            position.type === 'long' 
                               ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
                               : 'bg-red-500/20 text-red-400 border border-red-500/30'
                           }`}>
-                            {trade.type === 'buy' ? '🟢 شراء' : '🔴 بيع'}
+                            {position.type === 'long' ? '📈 شراء' : '📉 بيع قصير'}
                           </span>
                           <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded border border-purple-500/30">
                             رافعة {leverage}x
                           </span>
                           <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded border border-blue-500/30">
-                            #{actualIndex + 1}
+                            #{position.id}
                           </span>
-                          <div className="text-xs text-gray-400">
-                            {new Date(trade.timestamp).toLocaleDateString('ar')} - {new Date(trade.timestamp).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                          <span className="text-xs bg-gray-500/20 text-gray-400 px-2 py-1 rounded border border-gray-500/30">
+                            {position.duration}
+                          </span>
+                        </div>
+                        <div className={`text-right ${
+                          position.pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          <div className="text-sm font-bold">
+                            {position.pnl >= 0 ? '+' : ''}{formatCurrency(position.pnl)}
+                          </div>
+                          <div className="text-xs">
+                            {formatPercentage(pnlPercentage)}
                           </div>
                         </div>
-                        {trade.pnl && (
-                          <div className={`text-right ${
-                            trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
-                          }`}>
-                            <div className="text-sm font-bold">
-                              {trade.pnl >= 0 ? '+' : ''}{formatCurrency(trade.pnl)}
-                            </div>
-                            <div className="text-xs">
-                              {formatPercentage((trade.pnl / portfolioValue) * 100)}
-                            </div>
-                          </div>
-                        )}
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div className="space-y-2">
                           <div className="flex justify-between">
-                            <span className="text-gray-400">السعر:</span>
-                            <span className="text-white font-medium">{formatCurrency(trade.price)}</span>
+                            <span className="text-gray-400">سعر الدخول:</span>
+                            <span className="text-white font-medium">{formatCurrency(position.entryPrice)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">سعر الخروج:</span>
+                            <span className="text-white font-medium">{formatCurrency(position.exitPrice)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-400">الكمية:</span>
-                            <span className="text-white font-medium">{trade.quantity.toFixed(6)} BTC</span>
+                            <span className="text-white font-medium">{position.quantity.toFixed(6)} BTC</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-400">القيمة الإجمالية:</span>
@@ -436,13 +491,23 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                             <span className="text-gray-400">الرافعة المالية:</span>
                             <span className="text-orange-400 font-medium">{leverage}x</span>
                           </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">المدة:</span>
+                            <span className="text-gray-300 font-medium">{position.duration}</span>
+                          </div>
                         </div>
                       </div>
                       
                       <div className="mt-3 pt-3 border-t border-white/10">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-400">قيمة المحفظة:</span>
-                          <span className="text-gray-300">{formatCurrency(portfolioValue)}</span>
+                        <div className="grid grid-cols-2 gap-4 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">تاريخ الدخول:</span>
+                            <span className="text-gray-300">{new Date(position.entryTime).toLocaleDateString('ar')}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">تاريخ الخروج:</span>
+                            <span className="text-gray-300">{new Date(position.exitTime).toLocaleDateString('ar')}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
