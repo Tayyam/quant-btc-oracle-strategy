@@ -2,7 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BacktestData, Trade } from '@/types/trading';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Scatter, Bar } from 'recharts';
+import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Scatter, Line } from 'recharts';
 
 interface CandlestickChartProps {
   data: BacktestData[];
@@ -22,26 +22,16 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
       Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000
     );
 
-    // حساب قيم الشمعة للعرض كـ bars
-    const bodyLow = Math.min(candle.open, candle.close);
-    const bodyHigh = Math.max(candle.open, candle.close);
-    const isGreen = candle.close > candle.open;
-
     return {
       timestamp: new Date(candle.timestamp).toLocaleDateString('ar'),
+      price: candle.close,
       open: candle.open,
       high: candle.high,
       low: candle.low,
       close: candle.close,
       volume: candle.volume,
-      bodyLow,
-      bodyHigh,
-      bodyHeight: bodyHigh - bodyLow,
-      isGreen,
-      wickLow: candle.low,
-      wickHigh: candle.high,
-      buySignal: buyTrade ? candle.low - (candle.high - candle.low) * 0.1 : null,
-      sellSignal: sellTrade ? candle.high + (candle.high - candle.low) * 0.1 : null,
+      buySignal: buyTrade ? candle.close : null,
+      sellSignal: sellTrade ? candle.close : null,
       buyPrice: buyTrade?.price || null,
       sellPrice: sellTrade?.price || null,
       index
@@ -72,58 +62,10 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
     },
   };
 
-  // مكون مخصص لرسم الشموع
-  const CandlestickBar = (props: any) => {
-    const { payload, x, y, width, height } = props;
-    
-    if (!payload) return null;
-    
-    const { high, low, bodyLow, bodyHigh, isGreen } = payload;
-    
-    // حساب المقياس والمواضع
-    const minPrice = Math.min(...data.map(d => d.low));
-    const maxPrice = Math.max(...data.map(d => d.high));
-    const priceRange = maxPrice - minPrice;
-    const scale = height / priceRange;
-    
-    // مواضع الفتائل والجسم
-    const wickTopY = y + height - ((high - minPrice) * scale);
-    const wickBottomY = y + height - ((low - minPrice) * scale);
-    const bodyTopY = y + height - ((bodyHigh - minPrice) * scale);
-    const bodyBottomY = y + height - ((bodyLow - minPrice) * scale);
-    
-    const centerX = x + width / 2;
-    const bodyWidth = Math.max(width * 0.6, 2);
-    
-    return (
-      <g>
-        {/* الفتيل */}
-        <line
-          x1={centerX}
-          y1={wickTopY}
-          x2={centerX}
-          y2={wickBottomY}
-          stroke={isGreen ? '#10B981' : '#EF4444'}
-          strokeWidth={1}
-        />
-        {/* جسم الشمعة */}
-        <rect
-          x={centerX - bodyWidth / 2}
-          y={bodyTopY}
-          width={bodyWidth}
-          height={Math.max(bodyBottomY - bodyTopY, 1)}
-          fill={isGreen ? '#10B981' : '#EF4444'}
-          stroke={isGreen ? '#059669' : '#DC2626'}
-          strokeWidth={1}
-        />
-      </g>
-    );
-  };
-
   return (
     <Card className="bg-white/10 backdrop-blur-lg border-white/20">
       <CardHeader>
-        <CardTitle className="text-white">الرسم البياني بالشموع اليابانية مع إشارات التداول</CardTitle>
+        <CardTitle className="text-white">الرسم البياني الخطي مع إشارات التداول</CardTitle>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[600px] w-full">
@@ -191,10 +133,14 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
                 }}
               />
               
-              {/* رسم الشموع باستخدام Bar مع shape مخصص */}
-              <Bar
-                dataKey="bodyHeight"
-                shape={(props) => <CandlestickBar {...props} />}
+              {/* الخط الرئيسي للسعر */}
+              <Line
+                type="monotone"
+                dataKey="price"
+                stroke="#8B5CF6"
+                strokeWidth={2}
+                dot={false}
+                connectNulls={true}
               />
               
               {/* إشارات الشراء */}
@@ -276,12 +222,8 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
             <span className="text-gray-300">إشارة بيع</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-3 bg-green-500"></div>
-            <span className="text-gray-300">شمعة صاعدة</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-3 bg-red-500"></div>
-            <span className="text-gray-300">شمعة هابطة</span>
+            <div className="w-4 h-1 bg-purple-500"></div>
+            <span className="text-gray-300">خط السعر</span>
           </div>
         </div>
       </CardContent>
