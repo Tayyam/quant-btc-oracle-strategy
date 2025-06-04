@@ -3,15 +3,17 @@ import { useState } from 'react';
 import { Upload, TrendingUp, BarChart3, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import FileUploader from '@/components/FileUploader';
 import StrategyResults from '@/components/StrategyResults';
 import { BacktestData, StrategyMetrics } from '@/types/trading';
-import { runBacktest } from '@/utils/tradingStrategy';
+import { runBacktest, runSmartDCABacktest } from '@/utils/tradingStrategy';
 
 const Index = () => {
   const [data, setData] = useState<BacktestData[]>([]);
   const [results, setResults] = useState<StrategyMetrics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<'strategy1' | 'strategy2'>('strategy1');
 
   const handleDataLoad = (csvData: BacktestData[]) => {
     setData(csvData);
@@ -23,12 +25,29 @@ const Index = () => {
     
     setLoading(true);
     try {
-      const backtestResults = runBacktest(data);
+      let backtestResults: StrategyMetrics;
+      
+      if (selectedStrategy === 'strategy1') {
+        backtestResults = runBacktest(data);
+      } else {
+        backtestResults = runSmartDCABacktest(data);
+      }
+      
       setResults(backtestResults);
     } catch (error) {
       console.error('Error running backtest:', error);
     }
     setLoading(false);
+  };
+
+  const getStrategyName = () => {
+    return selectedStrategy === 'strategy1' ? 'Grid Strategy' : 'Smart DCA Strategy';
+  };
+
+  const getStrategyDescription = () => {
+    return selectedStrategy === 'strategy1' 
+      ? 'استراتيجية الشبكة مع التحليل الفني المتقدم'
+      : 'استراتيجية الشراء الدوري الذكي مع تحليل ظروف السوق';
   };
 
   return (
@@ -37,14 +56,14 @@ const Index = () => {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
-            AI Quantitative Trading Strategy
+            AI Quantitative Trading Strategies
           </h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            اختبر استراتيجية التداول الكمية على بيانات BTC/USDT التاريخية واحصل على تحليل شامل للأداء
+            اختبر استراتيجيات التداول الكمية على بيانات BTC/USDT التاريخية واحصل على تحليل شامل للأداء
           </p>
         </div>
 
-        {/* Upload Section */}
+        {/* Strategy Selection & Upload Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <Card className="lg:col-span-2 bg-white/10 backdrop-blur-lg border-white/20">
             <CardHeader>
@@ -76,13 +95,35 @@ const Index = () => {
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
-                تشغيل الاختبار
+                اختيار الاستراتيجية
               </CardTitle>
               <CardDescription className="text-gray-300">
-                ابدأ اختبار الاستراتيجية على البيانات
+                اختر استراتيجية التداول المناسبة
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <Select 
+                value={selectedStrategy} 
+                onValueChange={(value: 'strategy1' | 'strategy2') => setSelectedStrategy(value)}
+              >
+                <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="strategy1">استراتيجية رقم 1 - Grid Strategy</SelectItem>
+                  <SelectItem value="strategy2">استراتيجية رقم 2 - Smart DCA</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <div className="p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
+                <p className="text-blue-400 font-medium text-sm">
+                  {getStrategyName()}
+                </p>
+                <p className="text-gray-300 text-xs mt-1">
+                  {getStrategyDescription()}
+                </p>
+              </div>
+              
               <Button 
                 onClick={handleRunBacktest}
                 disabled={data.length === 0 || loading}
@@ -103,7 +144,17 @@ const Index = () => {
 
         {/* Results Section */}
         {results && (
-          <StrategyResults results={results} data={data} />
+          <div className="mb-8">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-white mb-2">
+                نتائج {getStrategyName()}
+              </h2>
+              <p className="text-gray-300">
+                {getStrategyDescription()}
+              </p>
+            </div>
+            <StrategyResults results={results} data={data} />
+          </div>
         )}
 
         {/* Features */}
@@ -131,9 +182,9 @@ const Index = () => {
                   <TrendingUp className="h-6 w-6 text-green-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-white text-lg">استراتيجية ذكية</CardTitle>
+                  <CardTitle className="text-white text-lg">استراتيجيات متعددة</CardTitle>
                   <CardDescription className="text-gray-400">
-                    خوارزميات تداول متطورة
+                    Grid Strategy و Smart DCA
                   </CardDescription>
                 </div>
               </div>
