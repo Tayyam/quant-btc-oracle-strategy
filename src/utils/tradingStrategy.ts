@@ -133,14 +133,10 @@ class RiskManager {
     return (maxAllowed * this.leverage) / currentPrice;
   }
   
-  shouldTakeProfit(currentPrice: number, buyPrice: number, marketTrend: 'bullish' | 'bearish'): boolean {
-    const profitPercentage = ((currentPrice - buyPrice) / buyPrice) * 100;
-    
-    if (marketTrend === 'bullish') {
-      return profitPercentage >= 15;
-    } else {
-      return profitPercentage >= 8;
-    }
+  // إزالة شروط النسب المئوية والاعتماد فقط على التحليل الفني
+  shouldTakeProfit(currentPrice: number, buyPrice: number): boolean {
+    // البيع فقط إذا كان هناك ربح - لا نشترط نسبة معينة
+    return currentPrice > buyPrice;
   }
 }
 
@@ -367,11 +363,9 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     const currentData = data[i];
     const signal = signals[i];
     const price = currentData.close;
-    const marketTrend = analyzeMarketTrend(data, indicators, i);
     
     // حساب قيمة المحفظة الحالية بشكل صحيح
     const positionsValue = positions.reduce((sum, pos) => {
-      // حساب P&L الصحيح لكل مركز
       const priceChange = price - pos.entryPrice;
       const pnlPerUnit = priceChange * leverage;
       const totalPnl = pnlPerUnit * pos.quantity;
@@ -419,18 +413,23 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
       }
     }
     
-    // فحص المراكز المربحة فقط للبيع - لا نبيع أبداً بخسارة
+    // فحص المراكز للبيع - التحليل الفني فقط مع شرط الربح
     const positionsToClose: number[] = [];
+    const sellAnalysis = detectMarketDownturn(data, indicators, i);
+    
     positions.forEach((position, index) => {
       const priceChange = price - position.entryPrice;
       const pnlPerUnit = priceChange * leverage;
       const totalPnl = pnlPerUnit * position.quantity;
       
-      // البيع فقط عند الربح - باستخدام شروط أكثر تحفظاً
+      // شرط أساسي: يجب أن يكون هناك ربح
       const isProfit = totalPnl > 0;
-      const shouldTakeProfit = riskManager.shouldTakeProfit(price, position.entryPrice, marketTrend);
       
-      if (isProfit && shouldTakeProfit) {
+      // إشارة البيع من التحليل الفني
+      const hasAnalyticalSellSignal = sellAnalysis.shouldSell;
+      
+      // البيع فقط عند الربح + وجود إشارة بيع تحليلية
+      if (isProfit && hasAnalyticalSellSignal) {
         const entryValue = (position.quantity * position.entryPrice) / leverage;
         const exitValue = entryValue + totalPnl;
         
@@ -445,7 +444,9 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
           pnl: totalPnl
         });
         
-        console.log(`💰 بيع مربح: الدخول ${position.entryPrice.toFixed(2)}, الخروج ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
+        console.log(`💰 بيع مربح بإشارة تحليلية: الدخول ${position.entryPrice.toFixed(2)}, الخروج ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}, السبب: ${sellAnalysis.reason}`);
+      } else if (isProfit && !hasAnalyticalSellSignal) {
+        console.log(`📈 ربح ولكن لا توجد إشارة بيع تحليلية: P&L: ${totalPnl.toFixed(2)}, انتظار إشارة`);
       } else if (!isProfit) {
         console.log(`⏳ الاحتفاظ بالمركز الخاسر: الدخول ${position.entryPrice.toFixed(2)}, السعر الحالي ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
       }
