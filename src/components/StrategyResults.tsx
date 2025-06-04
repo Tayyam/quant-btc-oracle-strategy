@@ -107,71 +107,65 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     const bollinger = calculateBollinger(closePrices);
     
     let confidenceScore = 0;
+    let maxScore = 0;
     
-    // 1. RSI Analysis (0-30 نقطة)
-    if (rsi <= 10) confidenceScore += 30; // ذروة بيع قصوى
-    else if (rsi <= 20) confidenceScore += 25; // ذروة بيع قوية
-    else if (rsi <= 30) confidenceScore += 20; // ذروة بيع
-    else if (rsi <= 40) confidenceScore += 15; // منطقة بيع
-    else if (rsi <= 50) confidenceScore += 10; // محايد مائل للبيع
-    else if (rsi <= 60) confidenceScore += 5; // محايد مائل للشراء
-    else if (rsi <= 70) confidenceScore += 2; // منطقة شراء
-    else if (rsi <= 85) confidenceScore += 0; // ذروة شراء
-    else confidenceScore -= 10; // ذروة شراء قصوى (سلبي)
+    // 1. RSI في منطقة ذروة البيع (كلما أقل كلما أفضل للشراء)
+    maxScore += 25;
+    if (rsi < 20) confidenceScore += 25;
+    else if (rsi < 30) confidenceScore += 20;
+    else if (rsi < 40) confidenceScore += 15;
+    else if (rsi < 50) confidenceScore += 10;
+    else if (rsi < 60) confidenceScore += 5;
     
-    // 2. تحليل المتوسطات المتحركة (0-25 نقطة)
-    const priceTrend = currentPrice > sma20 ? 1 : -1;
-    const ma20vs50 = sma20 > sma50 ? 1 : -1;
+    // 2. موضع السعر بالنسبة للمتوسطات المتحركة
+    maxScore += 20;
+    if (currentPrice < sma20 && sma20 > sma50) confidenceScore += 20; // سعر تحت SMA20 لكن الترند صاعد
+    else if (currentPrice > sma20 && sma20 > sma50) confidenceScore += 15; // سعر فوق SMA20 والترند صاعد
+    else if (currentPrice < sma20 && sma20 < sma50) confidenceScore += 10; // سعر تحت SMA20 والترند هابط
+    else confidenceScore += 5;
     
-    if (priceTrend === 1 && ma20vs50 === 1) {
-      confidenceScore += 25; // اتجاه صاعد قوي
-    } else if (priceTrend === -1 && ma20vs50 === 1) {
-      confidenceScore += 20; // انخفاض مؤقت في اتجاه صاعد
-    } else if (priceTrend === 1 && ma20vs50 === -1) {
-      confidenceScore += 10; // ارتداد في اتجاه هابط
-    } else {
-      confidenceScore += 0; // اتجاه هابط
-    }
-    
-    // 3. تحليل بولينجر باندز (0-20 نقطة)
+    // 3. موضع السعر في نطاق بولينجر
+    maxScore += 20;
     const bollingerPosition = (currentPrice - bollinger.lower) / (bollinger.upper - bollinger.lower);
-    if (bollingerPosition <= 0) confidenceScore += 20; // أسفل النطاق السفلي
-    else if (bollingerPosition <= 0.1) confidenceScore += 18; // قريب جداً من الحد السفلي
-    else if (bollingerPosition <= 0.2) confidenceScore += 15; // قريب من الحد السفلي
-    else if (bollingerPosition <= 0.3) confidenceScore += 12; // في النطاق السفلي
-    else if (bollingerPosition <= 0.5) confidenceScore += 8; // في المنتصف السفلي
-    else if (bollingerPosition <= 0.7) confidenceScore += 4; // في المنتصف العلوي
-    else if (bollingerPosition <= 0.9) confidenceScore += 1; // قريب من الحد العلوي
-    else confidenceScore += 0; // في النطاق العلوي أو أعلى
+    if (bollingerPosition < 0.2) confidenceScore += 20; // قريب من الحد السفلي
+    else if (bollingerPosition < 0.4) confidenceScore += 15;
+    else if (bollingerPosition < 0.6) confidenceScore += 10;
+    else if (bollingerPosition < 0.8) confidenceScore += 5;
     
-    // 4. تحليل التغيير السعري الأخير (0-15 نقطة)
+    // 4. انخفاض السعر الأخير (فرصة شراء)
+    maxScore += 15;
     const priceChange5 = entryIndex >= 5 ? ((currentPrice - data[entryIndex - 5].close) / data[entryIndex - 5].close) * 100 : 0;
-    if (priceChange5 <= -20) confidenceScore += 15; // انخفاض حاد
-    else if (priceChange5 <= -15) confidenceScore += 13; // انخفاض قوي
-    else if (priceChange5 <= -10) confidenceScore += 11; // انخفاض متوسط
-    else if (priceChange5 <= -5) confidenceScore += 8; // انخفاض خفيف
-    else if (priceChange5 <= -2) confidenceScore += 5; // انخفاض طفيف
-    else if (priceChange5 <= 0) confidenceScore += 2; // استقرار
-    else if (priceChange5 <= 5) confidenceScore += 0; // ارتفاع خفيف
-    else confidenceScore -= 5; // ارتفاع قوي (قد يكون متأخراً)
+    if (priceChange5 < -10) confidenceScore += 15;
+    else if (priceChange5 < -5) confidenceScore += 12;
+    else if (priceChange5 < -2) confidenceScore += 8;
+    else if (priceChange5 < 0) confidenceScore += 4;
     
-    // 5. تحليل حجم التداول (0-10 نقطة)
+    // 5. حجم التداول
+    maxScore += 10;
     if (entryIndex >= 10) {
       const avgVolume = data.slice(entryIndex - 10, entryIndex).reduce((sum, d) => sum + d.volume, 0) / 10;
       const currentVolume = currentData.volume;
-      const volumeRatio = currentVolume / avgVolume;
-      
-      if (volumeRatio >= 3) confidenceScore += 10; // حجم عالي جداً
-      else if (volumeRatio >= 2) confidenceScore += 8; // حجم عالي
-      else if (volumeRatio >= 1.5) confidenceScore += 6; // حجم أعلى من المتوسط
-      else if (volumeRatio >= 1.2) confidenceScore += 4; // حجم طبيعي+
-      else if (volumeRatio >= 0.8) confidenceScore += 2; // حجم طبيعي
-      else confidenceScore += 0; // حجم منخفض
+      if (currentVolume > avgVolume * 1.5) confidenceScore += 10;
+      else if (currentVolume > avgVolume * 1.2) confidenceScore += 7;
+      else if (currentVolume > avgVolume) confidenceScore += 4;
     }
     
-    // تأكد من أن النتيجة في النطاق 0-100
-    const finalConfidence = Math.min(100, Math.max(0, confidenceScore));
-    return Math.round(finalConfidence);
+    // 6. نمط الشموع
+    maxScore += 10;
+    const bodySize = Math.abs(currentData.close - currentData.open);
+    const candleRange = currentData.high - currentData.low;
+    const bodyPercentage = candleRange > 0 ? bodySize / candleRange : 0;
+    
+    if (currentData.close > currentData.open && bodyPercentage > 0.7) {
+      confidenceScore += 10; // شمعة صاعدة قوية
+    } else if (currentData.close > currentData.open && bodyPercentage > 0.5) {
+      confidenceScore += 7;
+    } else if (currentData.close > currentData.open) {
+      confidenceScore += 4;
+    }
+    
+    const finalConfidence = Math.round((confidenceScore / maxScore) * 100);
+    return Math.min(100, Math.max(0, finalConfidence));
   };
 
   // الحصول على الإيموجي بناء على قوة الثقة
@@ -183,9 +177,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     if (confidence >= 50) return '👌'; // موافق - فرصة متوسطة
     if (confidence >= 40) return '⚠️'; // تحذير - فرصة ضعيفة
     if (confidence >= 30) return '😐'; // محايد - فرصة ضعيفة جداً
-    if (confidence >= 20) return '👎'; // رفض - فرصة سيئة
-    if (confidence >= 10) return '🚫'; // منع - فرصة سيئة جداً
-    return '💀'; // خطر - فرصة كارثية
+    return '❌'; // خطأ - فرصة سيئة
   };
 
   // استخدام قيم P&L المحسوبة مسبقاً من النظام
