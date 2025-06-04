@@ -16,33 +16,6 @@ export interface Trade {
   pnl?: number;
 }
 
-export interface DecisionLog {
-  timestamp: string;
-  action: 'buy' | 'sell' | 'hold';
-  price: number;
-  marketTrend: 'bullish' | 'bearish';
-  indicators: {
-    rsi: number;
-    sma20: number;
-    sma50: number;
-    macdLine: number;
-    macdSignal: number;
-    bollingerLower: number;
-    bollingerUpper: number;
-  };
-  signals: {
-    rsiSignal: string;
-    smaSignal: string;
-    macdSignal: string;
-    bollingerSignal: string;
-    priceDropSignal: string;
-    volumeSignal: string;
-  };
-  buyScore: number;
-  finalDecision: string;
-  reason: string;
-}
-
 export interface StrategyMetrics {
   totalReturn: number;
   annualizedReturn: number;
@@ -59,7 +32,6 @@ export interface StrategyMetrics {
   finalCapital: number;
   trades: Trade[];
   equityCurve: { timestamp: string; equity: number; drawdown: number }[];
-  decisionLogs: DecisionLog[];
 }
 
 export interface TechnicalIndicators {
