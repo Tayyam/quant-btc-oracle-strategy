@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Activity } from 'lucide-react';
@@ -281,7 +280,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
             <CardHeader>
               <CardTitle className="text-white">سجل الصفقات المفصل</CardTitle>
               <CardDescription className="text-gray-300">
-                تفاصيل دقيقة لكل صفقة مع قيم USDT ونسبة المحفظة
+                تفاصيل دقيقة لكل صفقة مع قيم USDT ونسبة المحفظة والرافعة المالية
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -290,6 +289,8 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                   const portfolioValue = getPortfolioValueAtTrade(results.trades.length - 1 - index);
                   const tradeValueUSDT = trade.quantity * trade.price;
                   const portfolioPercentage = (tradeValueUSDT / portfolioValue) * 100;
+                  const leverage = 2; // الرافعة المالية المستخدمة
+                  const requiredCapital = tradeValueUSDT / leverage; // رأس المال المطلوب مع الرافعة
                   
                   return (
                     <div 
@@ -304,6 +305,9 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                               : 'bg-red-500/20 text-red-400 border border-red-500/30'
                           }`}>
                             {trade.type === 'buy' ? '🟢 شراء' : '🔴 بيع'}
+                          </span>
+                          <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded border border-purple-500/30">
+                            رافعة {leverage}x
                           </span>
                           <div className="text-xs text-gray-400">
                             {new Date(trade.timestamp).toLocaleDateString('ar')} - {new Date(trade.timestamp).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
@@ -333,16 +337,24 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                             <span className="text-gray-400">الكمية:</span>
                             <span className="text-white font-medium">{trade.quantity.toFixed(6)} BTC</span>
                           </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">القيمة الإجمالية:</span>
+                            <span className="text-white font-medium">{formatCurrency(tradeValueUSDT)}</span>
+                          </div>
                         </div>
                         
                         <div className="space-y-2">
                           <div className="flex justify-between">
-                            <span className="text-gray-400">القيمة USDT:</span>
-                            <span className="text-white font-medium">{formatCurrency(tradeValueUSDT)}</span>
+                            <span className="text-gray-400">رأس المال المستخدم:</span>
+                            <span className="text-purple-400 font-medium">{formatCurrency(requiredCapital)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-400">من المحفظة:</span>
                             <span className="text-purple-400 font-medium">{portfolioPercentage.toFixed(2)}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">الرافعة المالية:</span>
+                            <span className="text-orange-400 font-medium">{leverage}x</span>
                           </div>
                         </div>
                       </div>
