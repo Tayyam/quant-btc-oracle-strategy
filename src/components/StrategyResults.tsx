@@ -42,7 +42,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  // تحويل الصفقات إلى مراكز
+  // تحويل الصفقات إلى مراكز مع حساب P&L الصحيح
   const positions = useMemo(() => {
     const positionsList: Position[] = [];
     let currentPosition: any = null;
@@ -59,12 +59,22 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           type: 'long' as const,
         };
       } else if (trade.type === 'sell' && currentPosition) {
-        // إغلاق مركز طويل
+        // إغلاق مركز طويل - حساب P&L الصحيح
         const entryTime = new Date(currentPosition.entryTime);
         const exitTime = new Date(trade.timestamp);
         const duration = Math.round((exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60)); // بالساعات
         
-        const pnl = (trade.price - currentPosition.entryPrice) * currentPosition.quantity;
+        // حساب P&L الصحيح مع الرافعة المالية
+        const leverage = 2;
+        const entryValue = currentPosition.quantity * currentPosition.entryPrice;
+        const exitValue = currentPosition.quantity * trade.price;
+        const priceChange = trade.price - currentPosition.entryPrice;
+        const pnlWithoutLeverage = priceChange * currentPosition.quantity;
+        
+        // P&L مع الرافعة المالية = تغيير السعر × الكمية × الرافعة
+        const actualPnl = pnlWithoutLeverage * leverage;
+        
+        // العثور على نقطة رأس المال في منحنى الأرباح
         const equityPoint = results.equityCurve.find(point => {
           const tradeTimestamp = new Date(trade.timestamp).getTime();
           const pointTimestamp = new Date(point.timestamp).getTime();
@@ -75,7 +85,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           ...currentPosition,
           exitTime: trade.timestamp,
           exitPrice: trade.price,
-          pnl,
+          pnl: actualPnl, // استخدام P&L الصحيح
           duration: duration > 24 ? `${Math.round(duration / 24)} أيام` : `${duration} ساعة`,
           portfolioValue: equityPoint ? equityPoint.equity : results.initialCapital,
         });
@@ -416,11 +426,11 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
 
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {paginatedPositions.map((position) => {
-                  const tradeValueUSDT = position.quantity * position.entryPrice;
-                  const portfolioPercentage = (tradeValueUSDT / position.portfolioValue) * 100;
                   const leverage = 2;
+                  const tradeValueUSDT = position.quantity * position.entryPrice;
                   const requiredCapital = tradeValueUSDT / leverage;
-                  const pnlPercentage = (position.pnl / position.portfolioValue) * 100;
+                  const portfolioPercentage = (requiredCapital / position.portfolioValue) * 100;
+                  const pnlPercentage = (position.pnl / requiredCapital) * 100;
                   
                   return (
                     <div 
