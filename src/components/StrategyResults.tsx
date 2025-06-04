@@ -23,6 +23,7 @@ interface Position {
   pnl: number;
   duration: string;
   portfolioValue: number;
+  portfolioValueAfter: number;
 }
 
 const StrategyResults = ({ results, data }: StrategyResultsProps) => {
@@ -42,7 +43,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  // تحويل الصفقات إلى مراكز مع حساب P&L الصحيح منطقياً
+  // تحويل الصفقات إلى مراكز باستخدام التغييرات الفعلية في قيمة المحفظة
   const positions = useMemo(() => {
     const positionsList: Position[] = [];
     let currentPosition: any = null;
@@ -57,33 +58,40 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           entryPrice: trade.price,
           quantity: trade.quantity,
           type: 'long' as const,
+          entryEquityIndex: index,
         };
       } else if (trade.type === 'sell' && currentPosition) {
-        // إغلاق مركز طويل - حساب P&L الصحيح منطقياً
+        // إغلاق مركز طويل - استخدام التغيير الفعلي في قيمة المحفظة
         const entryTime = new Date(currentPosition.entryTime);
         const exitTime = new Date(trade.timestamp);
         const duration = Math.round((exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60)); // بالساعات
         
-        // حساب P&L الصحيح: (سعر الخروج - سعر الدخول) × الكمية × الرافعة المالية
-        const leverage = 2;
-        const priceChange = trade.price - currentPosition.entryPrice; // تغيير السعر
-        const pnlBeforeLeverage = priceChange * currentPosition.quantity; // P&L بدون رافعة
-        const actualPnl = pnlBeforeLeverage * leverage; // P&L مع الرافعة المالية
-        
-        // العثور على نقطة رأس المال في منحنى الأرباح
-        const equityPoint = results.equityCurve.find(point => {
-          const tradeTimestamp = new Date(trade.timestamp).getTime();
+        // العثور على نقاط رأس المال قبل وبعد الصفقة
+        const entryEquityPoint = results.equityCurve.find(point => {
+          const entryTimestamp = new Date(currentPosition.entryTime).getTime();
           const pointTimestamp = new Date(point.timestamp).getTime();
-          return Math.abs(pointTimestamp - tradeTimestamp) < 3600000;
+          return Math.abs(pointTimestamp - entryTimestamp) < 3600000;
         });
+        
+        const exitEquityPoint = results.equityCurve.find(point => {
+          const exitTimestamp = new Date(trade.timestamp).getTime();
+          const pointTimestamp = new Date(point.timestamp).getTime();
+          return Math.abs(pointTimestamp - exitTimestamp) < 3600000;
+        });
+        
+        // حساب P&L من التغيير الفعلي في قيمة المحفظة
+        const portfolioValueBefore = entryEquityPoint ? entryEquityPoint.equity : results.initialCapital;
+        const portfolioValueAfter = exitEquityPoint ? exitEquityPoint.equity : results.initialCapital;
+        const actualPnl = portfolioValueAfter - portfolioValueBefore;
         
         positionsList.push({
           ...currentPosition,
           exitTime: trade.timestamp,
           exitPrice: trade.price,
-          pnl: actualPnl, // استخدام P&L المحسوب منطقياً
+          pnl: actualPnl, // استخدام التغيير الفعلي في قيمة المحفظة
           duration: duration > 24 ? `${Math.round(duration / 24)} أيام` : `${duration} ساعة`,
-          portfolioValue: equityPoint ? equityPoint.equity : results.initialCapital,
+          portfolioValue: portfolioValueBefore,
+          portfolioValueAfter: portfolioValueAfter,
         });
         
         currentPosition = null;
@@ -382,7 +390,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
             <CardHeader>
               <CardTitle className="text-white">سجل المراكز المفصل</CardTitle>
               <CardDescription className="text-gray-300">
-                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) مع حساب P&L الصحيح منطقياً
+                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) باستخدام التغيير الفعلي في قيمة المحفظة
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-sm">
                     الصفحة {currentPage} من {totalPages} • عرض {positionsPerPage} مركز لكل صفحة
@@ -494,12 +502,12 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                             <span className="text-purple-400 font-medium">{portfolioPercentage.toFixed(2)}%</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-gray-400">الرافعة المالية:</span>
-                            <span className="text-orange-400 font-medium">{leverage}x</span>
+                            <span className="text-gray-400">المحفظة قبل:</span>
+                            <span className="text-gray-300 font-medium">{formatCurrency(position.portfolioValue)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-gray-400">المدة:</span>
-                            <span className="text-gray-300 font-medium">{position.duration}</span>
+                            <span className="text-gray-400">المحفظة بعد:</span>
+                            <span className="text-gray-300 font-medium">{formatCurrency(position.portfolioValueAfter)}</span>
                           </div>
                         </div>
                       </div>
