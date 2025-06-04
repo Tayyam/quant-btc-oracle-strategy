@@ -42,7 +42,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  // تحويل الصفقات إلى مراكز باستخدام P&L الصحيح من النظام
+  // تحويل الصفقات إلى مراكز مع حساب P&L الصحيح منطقياً
   const positions = useMemo(() => {
     const positionsList: Position[] = [];
     let currentPosition: any = null;
@@ -59,13 +59,16 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           type: 'long' as const,
         };
       } else if (trade.type === 'sell' && currentPosition) {
-        // إغلاق مركز طويل - استخدام P&L من النظام مباشرة
+        // إغلاق مركز طويل - حساب P&L الصحيح منطقياً
         const entryTime = new Date(currentPosition.entryTime);
         const exitTime = new Date(trade.timestamp);
         const duration = Math.round((exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60)); // بالساعات
         
-        // استخدام P&L المحسوب مسبقاً في النظام
-        const pnl = trade.pnl || 0;
+        // حساب P&L الصحيح: (سعر الخروج - سعر الدخول) × الكمية × الرافعة المالية
+        const leverage = 2;
+        const priceChange = trade.price - currentPosition.entryPrice; // تغيير السعر
+        const pnlBeforeLeverage = priceChange * currentPosition.quantity; // P&L بدون رافعة
+        const actualPnl = pnlBeforeLeverage * leverage; // P&L مع الرافعة المالية
         
         // العثور على نقطة رأس المال في منحنى الأرباح
         const equityPoint = results.equityCurve.find(point => {
@@ -78,7 +81,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           ...currentPosition,
           exitTime: trade.timestamp,
           exitPrice: trade.price,
-          pnl: pnl, // استخدام P&L من النظام مباشرة
+          pnl: actualPnl, // استخدام P&L المحسوب منطقياً
           duration: duration > 24 ? `${Math.round(duration / 24)} أيام` : `${duration} ساعة`,
           portfolioValue: equityPoint ? equityPoint.equity : results.initialCapital,
         });
@@ -379,7 +382,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
             <CardHeader>
               <CardTitle className="text-white">سجل المراكز المفصل</CardTitle>
               <CardDescription className="text-gray-300">
-                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) باستخدام P&L من النظام مباشرة
+                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) مع حساب P&L الصحيح منطقياً
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-sm">
                     الصفحة {currentPage} من {totalPages} • عرض {positionsPerPage} مركز لكل صفحة
