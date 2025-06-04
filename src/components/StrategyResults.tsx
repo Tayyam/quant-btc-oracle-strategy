@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Activity } from 'lucide-react';
@@ -280,13 +281,14 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
             <CardHeader>
               <CardTitle className="text-white">سجل الصفقات المفصل</CardTitle>
               <CardDescription className="text-gray-300">
-                تفاصيل دقيقة لكل صفقة مع قيم USDT ونسبة المحفظة والرافعة المالية
+                تفاصيل دقيقة لجميع الصفقات ({results.trades.length} صفقة) مع قيم USDT ونسبة المحفظة والرافعة المالية
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {results.trades.slice(-20).reverse().map((trade, index) => {
-                  const portfolioValue = getPortfolioValueAtTrade(results.trades.length - 1 - index);
+                {results.trades.slice().reverse().map((trade, reverseIndex) => {
+                  const actualIndex = results.trades.length - 1 - reverseIndex;
+                  const portfolioValue = getPortfolioValueAtTrade(actualIndex);
                   const tradeValueUSDT = trade.quantity * trade.price;
                   const portfolioPercentage = (tradeValueUSDT / portfolioValue) * 100;
                   const leverage = 2; // الرافعة المالية المستخدمة
@@ -294,7 +296,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                   
                   return (
                     <div 
-                      key={index} 
+                      key={actualIndex} 
                       className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-colors"
                     >
                       <div className="flex justify-between items-start mb-3">
@@ -308,6 +310,9 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                           </span>
                           <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded border border-purple-500/30">
                             رافعة {leverage}x
+                          </span>
+                          <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded border border-blue-500/30">
+                            #{actualIndex + 1}
                           </span>
                           <div className="text-xs text-gray-400">
                             {new Date(trade.timestamp).toLocaleDateString('ar')} - {new Date(trade.timestamp).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
