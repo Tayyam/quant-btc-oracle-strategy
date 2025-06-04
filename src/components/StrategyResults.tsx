@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -25,6 +24,7 @@ interface Position {
   duration: string;
   portfolioValue: number;
   portfolioValueAfter: number;
+  buyConfidence: number;
 }
 
 const StrategyResults = ({ results, data }: StrategyResultsProps) => {
@@ -44,6 +44,142 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
+  // حساب قوة الثقة في الشراء
+  const calculateBuyConfidence = (entryIndex: number): number => {
+    if (entryIndex < 50 || entryIndex >= data.length) return 50;
+    
+    const currentData = data[entryIndex];
+    const currentPrice = currentData.close;
+    
+    // حساب المؤشرات التقنية في وقت الدخول
+    const closePrices = data.slice(0, entryIndex + 1).map(d => d.close);
+    
+    // RSI
+    const calculateRSI = (prices: number[], period: number = 14): number => {
+      if (prices.length < period + 1) return 50;
+      
+      const gains: number[] = [];
+      const losses: number[] = [];
+      
+      for (let i = 1; i < prices.length; i++) {
+        const change = prices[i] - prices[i - 1];
+        gains.push(change > 0 ? change : 0);
+        losses.push(change < 0 ? Math.abs(change) : 0);
+      }
+      
+      const recentGains = gains.slice(-period);
+      const recentLosses = losses.slice(-period);
+      
+      const avgGain = recentGains.reduce((a, b) => a + b, 0) / period;
+      const avgLoss = recentLosses.reduce((a, b) => a + b, 0) / period;
+      
+      if (avgLoss === 0) return 100;
+      const rs = avgGain / avgLoss;
+      return 100 - (100 / (1 + rs));
+    };
+    
+    // SMA
+    const calculateSMA = (prices: number[], period: number): number => {
+      if (prices.length < period) return prices[prices.length - 1];
+      const recentPrices = prices.slice(-period);
+      return recentPrices.reduce((a, b) => a + b, 0) / period;
+    };
+    
+    // Bollinger Bands
+    const calculateBollinger = (prices: number[], period: number = 20) => {
+      if (prices.length < period) return { upper: currentPrice, lower: currentPrice, middle: currentPrice };
+      
+      const recentPrices = prices.slice(-period);
+      const sma = recentPrices.reduce((a, b) => a + b, 0) / period;
+      const variance = recentPrices.reduce((sum, price) => sum + Math.pow(price - sma, 2), 0) / period;
+      const stdDev = Math.sqrt(variance);
+      
+      return {
+        upper: sma + (stdDev * 2),
+        lower: sma - (stdDev * 2),
+        middle: sma
+      };
+    };
+    
+    const rsi = calculateRSI(closePrices);
+    const sma20 = calculateSMA(closePrices, 20);
+    const sma50 = calculateSMA(closePrices, 50);
+    const bollinger = calculateBollinger(closePrices);
+    
+    let confidenceScore = 0;
+    let maxScore = 0;
+    
+    // 1. RSI في منطقة ذروة البيع (كلما أقل كلما أفضل للشراء)
+    maxScore += 25;
+    if (rsi < 20) confidenceScore += 25;
+    else if (rsi < 30) confidenceScore += 20;
+    else if (rsi < 40) confidenceScore += 15;
+    else if (rsi < 50) confidenceScore += 10;
+    else if (rsi < 60) confidenceScore += 5;
+    
+    // 2. موضع السعر بالنسبة للمتوسطات المتحركة
+    maxScore += 20;
+    if (currentPrice < sma20 && sma20 > sma50) confidenceScore += 20; // سعر تحت SMA20 لكن الترند صاعد
+    else if (currentPrice > sma20 && sma20 > sma50) confidenceScore += 15; // سعر فوق SMA20 والترند صاعد
+    else if (currentPrice < sma20 && sma20 < sma50) confidenceScore += 10; // سعر تحت SMA20 والترند هابط
+    else confidenceScore += 5;
+    
+    // 3. موضع السعر في نطاق بولينجر
+    maxScore += 20;
+    const bollingerPosition = (currentPrice - bollinger.lower) / (bollinger.upper - bollinger.lower);
+    if (bollingerPosition < 0.2) confidenceScore += 20; // قريب من الحد السفلي
+    else if (bollingerPosition < 0.4) confidenceScore += 15;
+    else if (bollingerPosition < 0.6) confidenceScore += 10;
+    else if (bollingerPosition < 0.8) confidenceScore += 5;
+    
+    // 4. انخفاض السعر الأخير (فرصة شراء)
+    maxScore += 15;
+    const priceChange5 = entryIndex >= 5 ? ((currentPrice - data[entryIndex - 5].close) / data[entryIndex - 5].close) * 100 : 0;
+    if (priceChange5 < -10) confidenceScore += 15;
+    else if (priceChange5 < -5) confidenceScore += 12;
+    else if (priceChange5 < -2) confidenceScore += 8;
+    else if (priceChange5 < 0) confidenceScore += 4;
+    
+    // 5. حجم التداول
+    maxScore += 10;
+    if (entryIndex >= 10) {
+      const avgVolume = data.slice(entryIndex - 10, entryIndex).reduce((sum, d) => sum + d.volume, 0) / 10;
+      const currentVolume = currentData.volume;
+      if (currentVolume > avgVolume * 1.5) confidenceScore += 10;
+      else if (currentVolume > avgVolume * 1.2) confidenceScore += 7;
+      else if (currentVolume > avgVolume) confidenceScore += 4;
+    }
+    
+    // 6. نمط الشموع
+    maxScore += 10;
+    const bodySize = Math.abs(currentData.close - currentData.open);
+    const candleRange = currentData.high - currentData.low;
+    const bodyPercentage = candleRange > 0 ? bodySize / candleRange : 0;
+    
+    if (currentData.close > currentData.open && bodyPercentage > 0.7) {
+      confidenceScore += 10; // شمعة صاعدة قوية
+    } else if (currentData.close > currentData.open && bodyPercentage > 0.5) {
+      confidenceScore += 7;
+    } else if (currentData.close > currentData.open) {
+      confidenceScore += 4;
+    }
+    
+    const finalConfidence = Math.round((confidenceScore / maxScore) * 100);
+    return Math.min(100, Math.max(0, finalConfidence));
+  };
+
+  // الحصول على الإيموجي بناء على قوة الثقة
+  const getConfidenceEmoji = (confidence: number): string => {
+    if (confidence >= 90) return '🔥'; // نار - فرصة ممتازة
+    if (confidence >= 80) return '💎'; // ألماس - فرصة قوية جداً
+    if (confidence >= 70) return '⭐'; // نجمة - فرصة قوية
+    if (confidence >= 60) return '👍'; // إبهام - فرصة جيدة
+    if (confidence >= 50) return '👌'; // موافق - فرصة متوسطة
+    if (confidence >= 40) return '⚠️'; // تحذير - فرصة ضعيفة
+    if (confidence >= 30) return '😐'; // محايد - فرصة ضعيفة جداً
+    return '❌'; // خطأ - فرصة سيئة
+  };
+
   // استخدام قيم P&L المحسوبة مسبقاً من النظام
   const positions = useMemo(() => {
     const positionsList: Position[] = [];
@@ -53,6 +189,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     results.trades.forEach((trade, index) => {
       if (trade.type === 'buy' && !currentPosition) {
         // بداية مركز طويل
+        const entryIndex = data.findIndex(d => d.timestamp === trade.timestamp);
         currentPosition = {
           id: positionId++,
           entryTime: trade.timestamp,
@@ -60,6 +197,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           quantity: trade.quantity,
           type: 'long' as const,
           entryEquityIndex: index,
+          entryIndex: entryIndex,
         };
       } else if (trade.type === 'sell' && currentPosition) {
         // إغلاق مركز طويل - استخدام P&L المحسوبة من النظام
@@ -86,6 +224,9 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
         // استخدام P&L من التداول مباشرة
         const actualPnl = trade.pnl || 0;
         
+        // حساب قوة الثقة في الشراء
+        const buyConfidence = calculateBuyConfidence(currentPosition.entryIndex || 0);
+        
         positionsList.push({
           ...currentPosition,
           exitTime: trade.timestamp,
@@ -94,6 +235,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           duration: duration > 24 ? `${Math.round(duration / 24)} أيام` : `${duration} ساعة`,
           portfolioValue: portfolioValueBefore,
           portfolioValueAfter: portfolioValueAfter,
+          buyConfidence: buyConfidence,
         });
         
         currentPosition = null;
@@ -101,7 +243,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     });
 
     return positionsList.reverse(); // عرض أحدث المراكز أولاً
-  }, [results.trades, results.equityCurve, results.initialCapital]);
+  }, [results.trades, results.equityCurve, results.initialCapital, data]);
 
   // تحسين البيانات للرسوم البيانية - أخذ عينة كل 10 نقاط للبيانات الكبيرة
   const sampledData = useMemo(() => {
@@ -392,7 +534,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
             <CardHeader>
               <CardTitle className="text-white">سجل المراكز المفصل</CardTitle>
               <CardDescription className="text-gray-300">
-                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) مع حساب P&L الصحيح
+                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) مع قوة الثقة في الشراء
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-sm">
                     الصفحة {currentPage} من {totalPages} • عرض {positionsPerPage} مركز لكل صفحة
@@ -437,6 +579,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                   const requiredCapital = tradeValueUSDT / leverage;
                   const portfolioPercentage = (requiredCapital / position.portfolioValue) * 100;
                   const pnlPercentage = (position.pnl / requiredCapital) * 100;
+                  const confidenceEmoji = getConfidenceEmoji(position.buyConfidence);
                   
                   return (
                     <div 
@@ -479,6 +622,12 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                           <div className="flex justify-between">
                             <span className="text-gray-400">سعر الدخول:</span>
                             <span className="text-white font-medium">{formatCurrency(position.entryPrice)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">قوة الثقة في الشراء:</span>
+                            <span className="text-yellow-400 font-medium flex items-center gap-1">
+                              {confidenceEmoji} {position.buyConfidence}%
+                            </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-400">سعر الخروج:</span>
