@@ -1,4 +1,3 @@
-
 import { BacktestData, Trade, StrategyMetrics, TechnicalIndicators } from '@/types/trading';
 
 // Calculate Simple Moving Average
@@ -347,10 +346,11 @@ interface Position {
 
 // Run Enhanced Backtest with Risk Management
 export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
-  console.log('Starting enhanced backtest with intelligent sell strategy...');
+  console.log('Starting enhanced backtest with corrected P&L calculation...');
   
   const initialCapital = 10000;
   const riskManager = new RiskManager(initialCapital);
+  const leverage = 2;
   
   let capital = initialCapital;
   const positions: Position[] = [];
@@ -369,7 +369,16 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     const price = currentData.close;
     const marketTrend = analyzeMarketTrend(data, indicators, i);
     
-    const positionsValue = positions.reduce((sum, pos) => sum + (pos.quantity * price), 0);
+    // حساب قيمة المحفظة الحالية بشكل صحيح
+    const positionsValue = positions.reduce((sum, pos) => {
+      // حساب P&L الصحيح لكل مركز
+      const priceChange = price - pos.entryPrice;
+      const pnlPerUnit = priceChange * leverage;
+      const totalPnl = pnlPerUnit * pos.quantity;
+      const entryValue = (pos.quantity * pos.entryPrice) / leverage;
+      return sum + entryValue + totalPnl;
+    }, 0);
+    
     const currentEquity = capital + positionsValue;
     
     maxEquity = Math.max(maxEquity, currentEquity);
@@ -384,7 +393,7 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     // إشارة شراء - استخدام نظام الشبكة
     if (signal === 'buy' && capital > 100 && gridLevel < 8) {
       const positionSize = riskManager.getPositionSize(price, capital);
-      const requiredCapital = (positionSize * price) / 2;
+      const requiredCapital = (positionSize * price) / leverage;
       
       if (capital >= requiredCapital) {
         const position: Position = {
@@ -416,23 +425,25 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
       
       console.log(`🔴 بيع استراتيجي - السبب: ${sellAnalysis.reason}, مستوى الثقة: ${sellAnalysis.confidence}%`);
       
-      // بيع جميع المراكز
+      // بيع جميع المراكز مع حساب P&L الصحيح
       positions.forEach(position => {
-        const sellValue = position.quantity * price;
-        const entryValue = (position.quantity * position.entryPrice) / 2;
-        const pnl = sellValue - entryValue;
+        const entryValue = (position.quantity * position.entryPrice) / leverage;
+        const priceChange = price - position.entryPrice;
+        const pnlPerUnit = priceChange * leverage;
+        const totalPnl = pnlPerUnit * position.quantity;
+        const exitValue = entryValue + totalPnl;
         
-        capital += sellValue;
+        capital += exitValue;
         
         trades.push({
           timestamp: currentData.timestamp,
           type: 'sell',
           price: price,
           quantity: position.quantity,
-          pnl: pnl
+          pnl: totalPnl
         });
         
-        console.log(`بيع ذكي: السعر ${price.toFixed(2)}, النتيجة: ${pnl > 0 ? 'ربح' : 'خسارة'} ${pnl.toFixed(2)}`);
+        console.log(`بيع ذكي: الدخول ${position.entryPrice.toFixed(2)}, الخروج ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
       });
       
       // مسح جميع المراكز وإعادة تعيين مستوى الشبكة
@@ -443,11 +454,13 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
       const positionsToClose: number[] = [];
       positions.forEach((position, index) => {
         if (riskManager.shouldTakeProfit(price, position.entryPrice, marketTrend)) {
-          const sellValue = position.quantity * price;
-          const entryValue = (position.quantity * position.entryPrice) / 2;
-          const pnl = sellValue - entryValue;
+          const entryValue = (position.quantity * position.entryPrice) / leverage;
+          const priceChange = price - position.entryPrice;
+          const pnlPerUnit = priceChange * leverage;
+          const totalPnl = pnlPerUnit * position.quantity;
+          const exitValue = entryValue + totalPnl;
           
-          capital += sellValue;
+          capital += exitValue;
           positionsToClose.push(index);
           
           trades.push({
@@ -455,10 +468,10 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
             type: 'sell',
             price: price,
             quantity: position.quantity,
-            pnl: pnl
+            pnl: totalPnl
           });
           
-          console.log(`بيع مربح عادي: السعر ${price.toFixed(2)}, الربح: ${pnl.toFixed(2)}`);
+          console.log(`بيع مربح عادي: الدخول ${position.entryPrice.toFixed(2)}, الخروج ${price.toFixed(2)}, P&L: ${totalPnl.toFixed(2)}`);
         }
       });
       
@@ -469,22 +482,24 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     }
   }
   
-  // إغلاق المراكز المتبقية
+  // إغلاق المراكز المتبقية مع حساب P&L الصحيح
   if (positions.length > 0 && data.length > 0) {
     const lastPrice = data[data.length - 1].close;
     positions.forEach(position => {
-      const sellValue = position.quantity * lastPrice;
-      const entryValue = (position.quantity * position.entryPrice) / 2;
-      const pnl = sellValue - entryValue;
+      const entryValue = (position.quantity * position.entryPrice) / leverage;
+      const priceChange = lastPrice - position.entryPrice;
+      const pnlPerUnit = priceChange * leverage;
+      const totalPnl = pnlPerUnit * position.quantity;
+      const exitValue = entryValue + totalPnl;
       
-      capital += sellValue;
+      capital += exitValue;
       
       trades.push({
         timestamp: data[data.length - 1].timestamp,
         type: 'sell',
         price: lastPrice,
         quantity: position.quantity,
-        pnl: pnl
+        pnl: totalPnl
       });
     });
   }
@@ -524,12 +539,12 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
   );
   const sharpeRatio = returnStdDev > 0 ? (averageReturn / returnStdDev) * Math.sqrt(252) : 0;
   
-  console.log('Enhanced backtest with intelligent sell strategy completed:', {
+  console.log('Enhanced backtest with corrected P&L calculation completed:', {
     totalTrades: trades.length,
     totalReturn,
     winRate,
     finalCapital,
-    strategy: 'Grid System with Intelligent Market Downturn Detection'
+    strategy: 'Grid System with Corrected P&L Calculation'
   });
   
   return {

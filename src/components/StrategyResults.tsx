@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -43,7 +44,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  // تحويل الصفقات إلى مراكز باستخدام التغييرات الفعلية في قيمة المحفظة
+  // استخدام قيم P&L المحسوبة مسبقاً من النظام
   const positions = useMemo(() => {
     const positionsList: Position[] = [];
     let currentPosition: any = null;
@@ -61,12 +62,12 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           entryEquityIndex: index,
         };
       } else if (trade.type === 'sell' && currentPosition) {
-        // إغلاق مركز طويل - استخدام التغيير الفعلي في قيمة المحفظة
+        // إغلاق مركز طويل - استخدام P&L المحسوبة من النظام
         const entryTime = new Date(currentPosition.entryTime);
         const exitTime = new Date(trade.timestamp);
         const duration = Math.round((exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60)); // بالساعات
         
-        // العثور على نقاط رأس المال قبل وبعد الصفقة
+        // العثور على قيم المحفظة من منحنى رأس المال
         const entryEquityPoint = results.equityCurve.find(point => {
           const entryTimestamp = new Date(currentPosition.entryTime).getTime();
           const pointTimestamp = new Date(point.timestamp).getTime();
@@ -79,16 +80,17 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
           return Math.abs(pointTimestamp - exitTimestamp) < 3600000;
         });
         
-        // حساب P&L من التغيير الفعلي في قيمة المحفظة
         const portfolioValueBefore = entryEquityPoint ? entryEquityPoint.equity : results.initialCapital;
         const portfolioValueAfter = exitEquityPoint ? exitEquityPoint.equity : results.initialCapital;
-        const actualPnl = portfolioValueAfter - portfolioValueBefore;
+        
+        // استخدام P&L من التداول مباشرة
+        const actualPnl = trade.pnl || 0;
         
         positionsList.push({
           ...currentPosition,
           exitTime: trade.timestamp,
           exitPrice: trade.price,
-          pnl: actualPnl, // استخدام التغيير الفعلي في قيمة المحفظة
+          pnl: actualPnl,
           duration: duration > 24 ? `${Math.round(duration / 24)} أيام` : `${duration} ساعة`,
           portfolioValue: portfolioValueBefore,
           portfolioValueAfter: portfolioValueAfter,
@@ -390,7 +392,7 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
             <CardHeader>
               <CardTitle className="text-white">سجل المراكز المفصل</CardTitle>
               <CardDescription className="text-gray-300">
-                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) باستخدام التغيير الفعلي في قيمة المحفظة
+                تفاصيل دقيقة لجميع المراكز ({positions.length} مركز) مع حساب P&L الصحيح
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-sm">
                     الصفحة {currentPage} من {totalPages} • عرض {positionsPerPage} مركز لكل صفحة
