@@ -1,6 +1,5 @@
-
 import { useState } from 'react';
-import { Upload, TrendingUp, BarChart3, DollarSign } from 'lucide-react';
+import { Upload, TrendingUp, BarChart3, DollarSign, Activity } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import FileUploader from '@/components/FileUploader';
@@ -42,6 +41,18 @@ const Index = () => {
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
             اختبر استراتيجية التداول الكمية على بيانات BTC/USDT التاريخية واحصل على تحليل شامل للأداء
           </p>
+          
+          {/* إضافة رابط صفحة Console Logs */}
+          <div className="mt-6">
+            <Button 
+              onClick={() => window.location.href = '/console-logs'}
+              variant="outline"
+              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            >
+              <Activity className="h-4 w-4 mr-2" />
+              عرض تفاصيل اتخاذ القرارات
+            </Button>
+          </div>
         </div>
 
         {/* Upload Section */}
