@@ -1,5 +1,4 @@
-
-import { BacktestData, Trade, StrategyMetrics, TechnicalIndicators } from '@/types/trading';
+import { BacktestData, Trade, StrategyMetrics, TechnicalIndicators, DecisionLog } from '@/types/trading';
 
 // Calculate Simple Moving Average
 const calculateSMA = (prices: number[], period: number): number[] => {
@@ -191,9 +190,10 @@ const analyzeMarketTrend = (data: BacktestData[], indicators: TechnicalIndicator
   return bullishSignals > bearishSignals ? 'bullish' : 'bearish';
 };
 
-// Advanced Trading Strategy with Grid System
-const generateSignals = (data: BacktestData[], indicators: TechnicalIndicators): ('buy' | 'sell' | 'hold')[] => {
+// Advanced Trading Strategy with Decision Logging
+const generateSignalsWithLogs = (data: BacktestData[], indicators: TechnicalIndicators): { signals: ('buy' | 'sell' | 'hold')[], decisionLogs: DecisionLog[] } => {
   const signals: ('buy' | 'sell' | 'hold')[] = [];
+  const decisionLogs: DecisionLog[] = [];
   
   for (let i = 0; i < data.length; i++) {
     let signal: 'buy' | 'sell' | 'hold' = 'hold';
@@ -213,41 +213,126 @@ const generateSignals = (data: BacktestData[], indicators: TechnicalIndicators):
     const macdSignal = indicators.macd.signal[i];
     const bollingerLower = indicators.bollinger.lower[i];
     const bollingerUpper = indicators.bollinger.upper[i];
+    const marketTrend = analyzeMarketTrend(data, indicators, i);
     
     let buyScore = 0;
+    const signalDetails = {
+      rsiSignal: '',
+      smaSignal: '',
+      macdSignal: '',
+      bollingerSignal: '',
+      priceDropSignal: '',
+      volumeSignal: ''
+    };
     
     // إشارات الشراء القوية
     // 1. RSI في منطقة ذروة البيع
-    if (currentRSI < 35) buyScore += 2;
-    else if (currentRSI < 45) buyScore += 1;
+    if (currentRSI < 35) {
+      buyScore += 2;
+      signalDetails.rsiSignal = `RSI < 35: إشارة شراء قوية (+2 نقاط)`;
+    } else if (currentRSI < 45) {
+      buyScore += 1;
+      signalDetails.rsiSignal = `RSI < 45: إشارة شراء متوسطة (+1 نقطة)`;
+    } else {
+      signalDetails.rsiSignal = `RSI = ${currentRSI.toFixed(1)}: منطقة متوسطة أو مرتفعة (0 نقاط)`;
+    }
     
     // 2. كسر المتوسط المتحرك للأعلى
-    if (currentSMA20 > currentSMA50 && prevSMA20 <= prevSMA50) buyScore += 3;
+    if (currentSMA20 > currentSMA50 && prevSMA20 <= prevSMA50) {
+      buyScore += 3;
+      signalDetails.smaSignal = 'SMA20 كسر فوق SMA50: إشارة شراء قوية (+3 نقاط)';
+    } else if (currentSMA20 > currentSMA50) {
+      buyScore += 1;
+      signalDetails.smaSignal = 'SMA20 > SMA50: اتجاه صاعد (+1 نقطة)';
+    } else {
+      signalDetails.smaSignal = 'SMA20 < SMA50: لا توجد إشارة (0 نقاط)';
+    }
     
     // 3. MACD إيجابي
-    if (macdLine > macdSignal && indicators.macd.macd[i-1] <= indicators.macd.signal[i-1]) buyScore += 2;
+    if (macdLine > macdSignal && indicators.macd.macd[i-1] <= indicators.macd.signal[i-1]) {
+      buyScore += 2;
+      signalDetails.macdSignal = 'MACD كسر فوق Signal: إشارة شراء (+2 نقاط)';
+    } else if (macdLine > macdSignal) {
+      buyScore += 2;
+      signalDetails.macdSignal = 'MACD > Signal: إشارة شراء (+2 نقاط)';
+    } else {
+      signalDetails.macdSignal = 'MACD < Signal: لا توجد إشارة (0 نقاط)';
+    }
     
     // 4. السعر قريب من خط بولينجر السفلي
-    if (currentPrice <= bollingerLower * 1.02) buyScore += 2;
+    if (currentPrice <= bollingerLower * 1.02) {
+      buyScore += 2;
+      signalDetails.bollingerSignal = 'السعر قريب من الحد السفلي (+2 نقاط)';
+    } else if (currentPrice >= bollingerUpper * 0.98) {
+      signalDetails.bollingerSignal = 'السعر قريب من الحد العلوي (0 نقاط)';
+    } else {
+      signalDetails.bollingerSignal = 'السعر في المنتصف (0 نقاط)';
+    }
     
     // 5. انخفاض حاد في السعر (فرصة شراء)
     const priceDropPercent = ((data[i-5]?.close || currentPrice) - currentPrice) / (data[i-5]?.close || currentPrice) * 100;
-    if (priceDropPercent > 3) buyScore += 1;
-    if (priceDropPercent > 5) buyScore += 2;
+    if (priceDropPercent > 5) {
+      buyScore += 2;
+      signalDetails.priceDropSignal = `انخفاض ${priceDropPercent.toFixed(1)}% في آخر 5 شموع (+2 نقاط)`;
+    } else if (priceDropPercent > 3) {
+      buyScore += 1;
+      signalDetails.priceDropSignal = `انخفاض ${priceDropPercent.toFixed(1)}% في آخر 5 شموع (+1 نقطة)`;
+    } else {
+      signalDetails.priceDropSignal = 'لا يوجد انخفاض كبير (0 نقاط)';
+    }
     
     // 6. حجم التداول مرتفع
     const avgVolume = data.slice(Math.max(0, i-10), i).reduce((sum, d) => sum + d.volume, 0) / 10;
-    if (data[i].volume > avgVolume * 1.5) buyScore += 1;
+    if (data[i].volume > avgVolume * 1.5) {
+      buyScore += 1;
+      signalDetails.volumeSignal = `حجم تداول مرتفع ${(data[i].volume / avgVolume).toFixed(1)}x من المتوسط (+1 نقطة)`;
+    } else {
+      signalDetails.volumeSignal = 'حجم تداول عادي (0 نقاط)';
+    }
     
     // قرار الشراء: نحتاج نقاط كافية
+    let finalDecision = '';
+    let reason = '';
+    
     if (buyScore >= 4) {
       signal = 'buy';
+      finalDecision = `شراء - نقاط الشراء: ${buyScore}/10`;
+      reason = 'تحققت شروط الشراء الكافية للدخول في صفقة';
+    } else {
+      signal = 'hold';
+      finalDecision = `انتظار - نقاط الشراء: ${buyScore}/10`;
+      reason = 'نقاط الشراء غير كافية للدخول - نحتاج 4 نقاط على الأقل';
+    }
+    
+    // تسجيل القرار فقط للحالات المهمة (كل 10 نقاط أو عند وجود إشارة شراء)
+    if (i % 10 === 0 || signal === 'buy' || buyScore >= 3) {
+      const decisionLog: DecisionLog = {
+        timestamp: data[i].timestamp,
+        action: signal,
+        price: currentPrice,
+        marketTrend,
+        indicators: {
+          rsi: currentRSI,
+          sma20: currentSMA20,
+          sma50: currentSMA50,
+          macdLine,
+          macdSignal,
+          bollingerLower,
+          bollingerUpper
+        },
+        signals: signalDetails,
+        buyScore,
+        finalDecision,
+        reason
+      };
+      
+      decisionLogs.push(decisionLog);
     }
     
     signals.push(signal);
   }
   
-  return signals;
+  return { signals, decisionLogs };
 };
 
 // Position Management
@@ -259,9 +344,9 @@ interface Position {
   gridLevel: number;
 }
 
-// Run Enhanced Backtest with Risk Management
+// Run Enhanced Backtest with Decision Logging
 export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
-  console.log('Starting enhanced backtest with risk management...');
+  console.log('Starting enhanced backtest with decision logging...');
   
   const initialCapital = 10000;
   const riskManager = new RiskManager(initialCapital);
@@ -276,7 +361,7 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
   
   // Calculate indicators
   const indicators = calculateIndicators(data);
-  const signals = generateSignals(data, indicators);
+  const { signals, decisionLogs } = generateSignalsWithLogs(data, indicators);
   
   for (let i = 1; i < data.length; i++) {
     const currentData = data[i];
@@ -346,6 +431,36 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
           pnl: pnl
         });
         
+        // إضافة قرار البيع إلى سجل القرارات
+        const sellDecision: DecisionLog = {
+          timestamp: currentData.timestamp,
+          action: 'sell',
+          price: price,
+          marketTrend,
+          indicators: {
+            rsi: indicators.rsi[i],
+            sma20: indicators.sma20[i],
+            sma50: indicators.sma50[i],
+            macdLine: indicators.macd.macd[i],
+            macdSignal: indicators.macd.signal[i],
+            bollingerLower: indicators.bollinger.lower[i],
+            bollingerUpper: indicators.bollinger.upper[i]
+          },
+          signals: {
+            rsiSignal: `RSI = ${indicators.rsi[i].toFixed(1)}: منطقة ${indicators.rsi[i] > 65 ? 'مرتفعة' : 'متوسطة'}`,
+            smaSignal: indicators.sma20[i] > indicators.sma50[i] ? 'SMA20 > SMA50: اتجاه صاعد' : 'SMA20 < SMA50: اتجاه هابط',
+            macdSignal: indicators.macd.macd[i] > indicators.macd.signal[i] ? 'MACD > Signal: إشارة إيجابية' : 'MACD < Signal: إشارة سلبية',
+            bollingerSignal: price >= indicators.bollinger.upper[i] * 0.98 ? 'السعر قريب من الحد العلوي' : 'السعر في المنتصف',
+            priceDropSignal: `ارتفاع ${(((price - position.entryPrice) / position.entryPrice) * 100).toFixed(1)}% من نقطة الشراء`,
+            volumeSignal: 'حجم تداول عادي'
+          },
+          buyScore: 0,
+          finalDecision: `بيع - تحقيق ربح ${(((price - position.entryPrice) / position.entryPrice) * 100).toFixed(1)}%`,
+          reason: `وصول لهدف الربح في السوق ${marketTrend === 'bullish' ? 'الصاعد (15%)' : 'الهابط (8%)'} - بيع لتأمين المكاسب`
+        };
+        
+        decisionLogs.push(sellDecision);
+        
         console.log(`بيع مربح: السعر ${price.toFixed(2)}, الربح: ${pnl.toFixed(2)}`);
       }
     });
@@ -412,8 +527,9 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
   );
   const sharpeRatio = returnStdDev > 0 ? (averageReturn / returnStdDev) * Math.sqrt(252) : 0;
   
-  console.log('Enhanced backtest completed:', {
+  console.log('Enhanced backtest with decision logging completed:', {
     totalTrades: trades.length,
+    totalDecisions: decisionLogs.length,
     totalReturn,
     winRate,
     finalCapital,
@@ -435,6 +551,7 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     initialCapital,
     finalCapital,
     trades,
-    equityCurve
+    equityCurve,
+    decisionLogs
   };
 };

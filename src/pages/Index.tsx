@@ -15,6 +15,7 @@ const Index = () => {
   const handleDataLoad = (csvData: BacktestData[]) => {
     setData(csvData);
     setResults(null);
+    localStorage.removeItem('tradingResults');
   };
 
   const handleRunBacktest = async () => {
@@ -24,6 +25,10 @@ const Index = () => {
     try {
       const backtestResults = runBacktest(data);
       setResults(backtestResults);
+      
+      localStorage.setItem('tradingResults', JSON.stringify(backtestResults));
+      
+      console.log('Decision logs count:', backtestResults.decisionLogs?.length || 0);
     } catch (error) {
       console.error('Error running backtest:', error);
     }

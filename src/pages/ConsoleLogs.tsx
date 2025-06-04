@@ -5,122 +5,26 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
-
-interface DecisionLog {
-  timestamp: string;
-  action: 'buy' | 'sell' | 'hold';
-  price: number;
-  marketTrend: 'bullish' | 'bearish';
-  indicators: {
-    rsi: number;
-    sma20: number;
-    sma50: number;
-    macdLine: number;
-    macdSignal: number;
-    bollingerLower: number;
-    bollingerUpper: number;
-  };
-  signals: {
-    rsiSignal: string;
-    smaSignal: string;
-    macdSignal: string;
-    bollingerSignal: string;
-    priceDropSignal: string;
-    volumeSignal: string;
-  };
-  buyScore: number;
-  finalDecision: string;
-  reason: string;
-}
+import { DecisionLog } from '@/types/trading';
 
 const ConsoleLogs = () => {
   const navigate = useNavigate();
   const [logs, setLogs] = useState<DecisionLog[]>([]);
 
   useEffect(() => {
-    // محاكاة بيانات القرارات
-    const mockLogs: DecisionLog[] = [
-      {
-        timestamp: '2024-01-15 14:30:25',
-        action: 'buy',
-        price: 42850.50,
-        marketTrend: 'bearish',
-        indicators: {
-          rsi: 32.5,
-          sma20: 43200,
-          sma50: 43800,
-          macdLine: -125.8,
-          macdSignal: -145.2,
-          bollingerLower: 42800,
-          bollingerUpper: 44200
-        },
-        signals: {
-          rsiSignal: 'RSI < 35: إشارة شراء قوية (+2 نقاط)',
-          smaSignal: 'SMA20 < SMA50: لا توجد إشارة (0 نقاط)',
-          macdSignal: 'MACD > Signal: إشارة شراء (+2 نقاط)',
-          bollingerSignal: 'السعر قريب من الحد السفلي (+2 نقاط)',
-          priceDropSignal: 'انخفاض 4.2% في آخر 5 شموع (+1 نقطة)',
-          volumeSignal: 'حجم تداول مرتفع 1.8x من المتوسط (+1 نقطة)'
-        },
-        buyScore: 8,
-        finalDecision: 'شراء - نقاط الشراء: 8/10',
-        reason: 'RSI في منطقة ذروة البيع + إشارة MACD إيجابية + السعر قريب من خط بولينجر السفلي'
-      },
-      {
-        timestamp: '2024-01-15 15:45:12',
-        action: 'hold',
-        price: 43120.75,
-        marketTrend: 'bullish',
-        indicators: {
-          rsi: 55.2,
-          sma20: 43180,
-          sma50: 43750,
-          macdLine: -85.3,
-          macdSignal: -95.1,
-          bollingerLower: 42900,
-          bollingerUpper: 44300
-        },
-        signals: {
-          rsiSignal: 'RSI = 55.2: منطقة متوسطة (+1 نقطة)',
-          smaSignal: 'SMA20 < SMA50: لا توجد إشارة (0 نقاط)',
-          macdSignal: 'MACD > Signal: إشارة شراء (+2 نقاط)',
-          bollingerSignal: 'السعر في المنتصف (0 نقاط)',
-          priceDropSignal: 'لا يوجد انخفاض كبير (0 نقاط)',
-          volumeSignal: 'حجم تداول عادي (0 نقاط)'
-        },
-        buyScore: 3,
-        finalDecision: 'انتظار - نقاط الشراء: 3/10',
-        reason: 'نقاط الشراء غير كافية للدخول - نحتاج 4 نقاط على الأقل'
-      },
-      {
-        timestamp: '2024-01-15 16:20:45',
-        action: 'sell',
-        price: 44680.25,
-        marketTrend: 'bullish',
-        indicators: {
-          rsi: 68.5,
-          sma20: 43850,
-          sma50: 43720,
-          macdLine: 95.2,
-          macdSignal: 88.7,
-          bollingerLower: 43200,
-          bollingerUpper: 44800
-        },
-        signals: {
-          rsiSignal: 'RSI = 68.5: منطقة مرتفعة، لا شراء (0 نقاط)',
-          smaSignal: 'SMA20 > SMA50: اتجاه صاعد (+1 نقطة)',
-          macdSignal: 'MACD > Signal: إشارة إيجابية (+2 نقاط)',
-          bollingerSignal: 'السعر قريب من الحد العلوي (0 نقاط)',
-          priceDropSignal: 'ارتفاع 3.8% من نقطة الشراء',
-          volumeSignal: 'حجم تداول عادي (0 نقاط)'
-        },
-        buyScore: 0,
-        finalDecision: 'بيع - تحقيق ربح 15.2%',
-        reason: 'وصول لهدف الربح في السوق الصاعد (15%) - بيع لتأمين المكاسب'
+    // محاولة الحصول على البيانات من localStorage
+    const savedResults = localStorage.getItem('tradingResults');
+    if (savedResults) {
+      try {
+        const results = JSON.parse(savedResults);
+        if (results.decisionLogs && results.decisionLogs.length > 0) {
+          // أخذ آخر 50 قرار فقط لتحسين الأداء
+          setLogs(results.decisionLogs.slice(-50).reverse());
+        }
+      } catch (error) {
+        console.error('Error parsing trading results:', error);
       }
-    ];
-
-    setLogs(mockLogs);
+    }
   }, []);
 
   const getActionColor = (action: string) => {
@@ -141,6 +45,60 @@ const ConsoleLogs = () => {
     }
   };
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
+
+  if (logs.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center gap-4 mb-8">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate('/')}
+              className="text-white hover:bg-white/10"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              العودة
+            </Button>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Console.log - تتبع القرارات
+              </h1>
+              <p className="text-gray-300 mt-2">
+                تفاصيل كيفية اتخاذ قرارات الشراء والبيع بناءً على المؤشرات الفنية
+              </p>
+            </div>
+          </div>
+
+          <Card className="bg-white/10 backdrop-blur-lg border-white/20">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <Activity className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-white mb-2">لا توجد بيانات متاحة</h3>
+                <p className="text-gray-300 mb-4">
+                  يجب تشغيل اختبار الاستراتيجية أولاً لرؤية تفاصيل اتخاذ القرارات
+                </p>
+                <Button 
+                  onClick={() => navigate('/')}
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                >
+                  ارجع لتشغيل الاختبار
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="container mx-auto px-4 py-8">
@@ -159,7 +117,10 @@ const ConsoleLogs = () => {
               Console.log - تتبع القرارات
             </h1>
             <p className="text-gray-300 mt-2">
-              تفاصيل كيفية اتخاذ قرارات الشراء والبيع بناءً على المؤشرات الفنية
+              تفاصيل كيفية اتخاذ قرارات الشراء والبيع بناءً على المؤشرات الفنية الحقيقية
+            </p>
+            <p className="text-gray-400 text-sm mt-1">
+              عرض آخر {logs.length} قرار من الاختبار الأخير
             </p>
           </div>
         </div>
@@ -178,14 +139,14 @@ const ConsoleLogs = () => {
                       </span>
                     </Badge>
                     <CardTitle className="text-white">
-                      ${log.price.toLocaleString()}
+                      {formatCurrency(log.price)}
                     </CardTitle>
                     <Badge variant="outline" className="text-gray-300 border-gray-600">
                       {log.marketTrend === 'bullish' ? 'سوق صاعد' : 'سوق هابط'}
                     </Badge>
                   </div>
                   <CardDescription className="text-gray-400">
-                    {log.timestamp}
+                    {new Date(log.timestamp).toLocaleDateString('ar')} - {new Date(log.timestamp).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
                   </CardDescription>
                 </div>
               </CardHeader>
@@ -197,19 +158,29 @@ const ConsoleLogs = () => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-black/20 p-3 rounded-lg">
                       <div className="text-gray-400 text-sm">RSI</div>
-                      <div className="text-white font-mono">{log.indicators.rsi}</div>
+                      <div className="text-white font-mono">{log.indicators.rsi.toFixed(1)}</div>
                     </div>
                     <div className="bg-black/20 p-3 rounded-lg">
                       <div className="text-gray-400 text-sm">SMA20</div>
-                      <div className="text-white font-mono">${log.indicators.sma20.toLocaleString()}</div>
+                      <div className="text-white font-mono">{formatCurrency(log.indicators.sma20)}</div>
                     </div>
                     <div className="bg-black/20 p-3 rounded-lg">
                       <div className="text-gray-400 text-sm">SMA50</div>
-                      <div className="text-white font-mono">${log.indicators.sma50.toLocaleString()}</div>
+                      <div className="text-white font-mono">{formatCurrency(log.indicators.sma50)}</div>
                     </div>
                     <div className="bg-black/20 p-3 rounded-lg">
                       <div className="text-gray-400 text-sm">MACD</div>
                       <div className="text-white font-mono">{log.indicators.macdLine.toFixed(1)}</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div className="bg-black/20 p-3 rounded-lg">
+                      <div className="text-gray-400 text-sm">Bollinger Lower</div>
+                      <div className="text-white font-mono">{formatCurrency(log.indicators.bollingerLower)}</div>
+                    </div>
+                    <div className="bg-black/20 p-3 rounded-lg">
+                      <div className="text-gray-400 text-sm">Bollinger Upper</div>
+                      <div className="text-white font-mono">{formatCurrency(log.indicators.bollingerUpper)}</div>
                     </div>
                   </div>
                 </div>
@@ -251,12 +222,16 @@ const ConsoleLogs = () => {
                 <h3 className="text-white font-semibold mb-2">كيف تعمل خوارزمية اتخاذ القرار؟</h3>
                 <ul className="text-gray-300 space-y-1 text-sm">
                   <li>• RSI أقل من 35: +2 نقاط (منطقة ذروة البيع)</li>
-                  <li>• كسر SMA20 فوق SMA50: +3 نقاط (اتجاه صاعد)</li>
+                  <li>• RSI أقل من 45: +1 نقطة (منطقة شراء متوسطة)</li>
+                  <li>• كسر SMA20 فوق SMA50: +3 نقاط (اتجاه صاعد جديد)</li>
+                  <li>• SMA20 أكبر من SMA50: +1 نقطة (اتجاه صاعد)</li>
                   <li>• MACD فوق خط الإشارة: +2 نقاط (قوة شرائية)</li>
                   <li>• السعر قريب من خط بولينجر السفلي: +2 نقاط (دعم قوي)</li>
-                  <li>• انخفاض حاد في السعر: +1-2 نقاط (فرصة شراء)</li>
-                  <li>• حجم تداول مرتفع: +1 نقطة (تأكيد الإشارة)</li>
+                  <li>• انخفاض حاد في السعر (>5%): +2 نقاط (فرصة شراء)</li>
+                  <li>• انخفاض متوسط في السعر (>3%): +1 نقطة</li>
+                  <li>• حجم تداول مرتفع (>1.5x): +1 نقطة (تأكيد الإشارة)</li>
                   <li className="font-semibold text-yellow-400">• يتم الشراء عند الحصول على 4+ نقاط</li>
+                  <li className="font-semibold text-red-400">• يتم البيع عند تحقيق 15% ربح (سوق صاعد) أو 8% (سوق هابط)</li>
                 </ul>
               </div>
             </div>
