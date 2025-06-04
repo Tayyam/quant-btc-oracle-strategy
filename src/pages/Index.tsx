@@ -7,13 +7,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import FileUploader from '@/components/FileUploader';
 import StrategyResults from '@/components/StrategyResults';
 import { BacktestData, StrategyMetrics } from '@/types/trading';
-import { runBacktest, runSmartDCABacktest } from '@/utils/tradingStrategy';
+import { runGridStrategy } from '@/strategies/gridStrategy';
+import { runSmartDCAStrategy, SMART_DCA_PARAMETERS } from '@/strategies/smartDcaStrategy';
 
 const Index = () => {
   const [data, setData] = useState<BacktestData[]>([]);
   const [results, setResults] = useState<StrategyMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState<'strategy1' | 'strategy2'>('strategy1');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<keyof typeof SMART_DCA_PARAMETERS.TIMEFRAME_OPTIONS>('1year');
 
   const handleDataLoad = (csvData: BacktestData[]) => {
     setData(csvData);
@@ -28,9 +30,9 @@ const Index = () => {
       let backtestResults: StrategyMetrics;
       
       if (selectedStrategy === 'strategy1') {
-        backtestResults = runBacktest(data);
+        backtestResults = runGridStrategy(data);
       } else {
-        backtestResults = runSmartDCABacktest(data);
+        backtestResults = runSmartDCAStrategy(data, selectedTimeframe);
       }
       
       setResults(backtestResults);
@@ -47,7 +49,17 @@ const Index = () => {
   const getStrategyDescription = () => {
     return selectedStrategy === 'strategy1' 
       ? 'استراتيجية الشبكة مع التحليل الفني المتقدم'
-      : 'استراتيجية الشراء الدوري الذكي مع تحليل ظروف السوق';
+      : `استراتيجية الشراء الدوري الذكي - احتفاظ فقط (${getTimeframeName()})`;
+  };
+
+  const getTimeframeName = () => {
+    const timeframes = {
+      '3months': '3 أشهر',
+      '6months': '6 أشهر', 
+      '1year': 'سنة واحدة',
+      '5years': '5 سنوات'
+    };
+    return timeframes[selectedTimeframe];
   };
 
   return (
@@ -98,7 +110,7 @@ const Index = () => {
                 اختيار الاستراتيجية
               </CardTitle>
               <CardDescription className="text-gray-300">
-                اختر استراتيجية التداول المناسبة
+                اختر استراتيجية التداول والإطار الزمني
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -114,6 +126,23 @@ const Index = () => {
                   <SelectItem value="strategy2">استراتيجية رقم 2 - Smart DCA</SelectItem>
                 </SelectContent>
               </Select>
+
+              {selectedStrategy === 'strategy2' && (
+                <Select 
+                  value={selectedTimeframe} 
+                  onValueChange={(value: keyof typeof SMART_DCA_PARAMETERS.TIMEFRAME_OPTIONS) => setSelectedTimeframe(value)}
+                >
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3months">3 أشهر</SelectItem>
+                    <SelectItem value="6months">6 أشهر</SelectItem>
+                    <SelectItem value="1year">سنة واحدة</SelectItem>
+                    <SelectItem value="5years">5 سنوات</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
               
               <div className="p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
                 <p className="text-blue-400 font-medium text-sm">
@@ -122,6 +151,11 @@ const Index = () => {
                 <p className="text-gray-300 text-xs mt-1">
                   {getStrategyDescription()}
                 </p>
+                {selectedStrategy === 'strategy2' && (
+                  <p className="text-yellow-400 text-xs mt-1">
+                    ⚠️ لا يوجد بيع - احتفاظ بجميع المراكز
+                  </p>
+                )}
               </div>
               
               <Button 
@@ -198,9 +232,9 @@ const Index = () => {
                   <DollarSign className="h-6 w-6 text-purple-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-white text-lg">نتائج دقيقة</CardTitle>
+                  <CardTitle className="text-white text-lg">إدارة رأس المال الذكي</CardTitle>
                   <CardDescription className="text-gray-400">
-                    مقاييس أداء موثوقة
+                    توزيع الأموال حسب جاذبية الصفقات
                   </CardDescription>
                 </div>
               </div>
