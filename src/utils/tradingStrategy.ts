@@ -7,18 +7,18 @@ const STRATEGY_PARAMETERS = {
   LEVERAGE: 2,
   LIQUIDATION_PRICE: 30000,
   GRID_COUNT: 8,
-  SAFE_CAPITAL_RATIO: 0.8, // 80% من رأس المال للأمان
-  POSITION_CAPITAL_RATIO: 0.9, // 90% من رأس المال المتاح لكل صفقة
-  
-  // معاملات المؤشرات التقنية
-  SMA_SHORT_PERIOD: 20,
-  SMA_LONG_PERIOD: 50,
-  RSI_PERIOD: 14,
-  BOLLINGER_PERIOD: 20,
-  BOLLINGER_STD_DEV: 2,
-  EMA_FAST: 12,
-  EMA_SLOW: 26,
-  MACD_SIGNAL: 9,
+  SAFE_CAPITAL_RATIO: 0.8,
+  POSITION_CAPITAL_RATIO: 0.9,
+
+  // معاملات المؤشرات التقنية — (تم التعديل حسب نتائج Optuna)
+  SMA_SHORT_PERIOD: 10,
+  SMA_LONG_PERIOD: 85,
+  RSI_PERIOD: 21,
+  BOLLINGER_PERIOD: 16,
+  BOLLINGER_STD_DEV: 1.6,
+  EMA_FAST: 17,
+  EMA_SLOW: 23,
+  MACD_SIGNAL: 7,
   
   // معاملات إشارات الشراء
   BUY_SIGNALS: {
