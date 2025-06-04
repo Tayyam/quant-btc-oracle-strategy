@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Upload, TrendingUp, BarChart3, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +15,7 @@ const Index = () => {
   const [results, setResults] = useState<StrategyMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState<'strategy1' | 'strategy2'>('strategy1');
-  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1year');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<keyof typeof SMART_DCA_PARAMETERS.TIMEFRAME_OPTIONS>('1year');
 
   const handleDataLoad = (csvData: BacktestData[]) => {
     setData(csvData);
@@ -31,7 +32,7 @@ const Index = () => {
       if (selectedStrategy === 'strategy1') {
         backtestResults = runGridStrategy(data);
       } else {
-        backtestResults = runSmartDCAStrategy(data, selectedTimeframe as keyof typeof SMART_DCA_PARAMETERS.TIMEFRAME_OPTIONS);
+        backtestResults = runSmartDCAStrategy(data, selectedTimeframe);
       }
       
       setResults(backtestResults);
@@ -58,7 +59,7 @@ const Index = () => {
       '1year': 'سنة واحدة',
       '5years': '5 سنوات'
     };
-    return timeframes[selectedTimeframe as keyof typeof timeframes] || 'سنة واحدة';
+    return timeframes[selectedTimeframe];
   };
 
   return (
@@ -129,7 +130,7 @@ const Index = () => {
               {selectedStrategy === 'strategy2' && (
                 <Select 
                   value={selectedTimeframe} 
-                  onValueChange={(value: string) => setSelectedTimeframe(value)}
+                  onValueChange={(value: keyof typeof SMART_DCA_PARAMETERS.TIMEFRAME_OPTIONS) => setSelectedTimeframe(value)}
                 >
                   <SelectTrigger className="bg-white/10 border-white/20 text-white">
                     <SelectValue />
