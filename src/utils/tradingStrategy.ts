@@ -120,28 +120,17 @@ class RiskManager {
   
   constructor(initialCapital: number) {
     this.initialCapital = initialCapital;
-    // حساب المبلغ الآمن لكل شبكة لتجنب التصفية عند 30 ألف دولار
     this.maxPositionPerGrid = this.calculateMaxPositionPerGrid();
   }
   
   private calculateMaxPositionPerGrid(): number {
-    // حساب المبلغ الذي سيؤدي للتصفية عند 30 ألف دولار مع رافعة 2x
-    // عند الرافعة 2x، التصفية تحدث عند انخفاض 50% من سعر الدخول
-    // إذا كان سعر التصفية 30000، فسعر الدخول الآمن هو 60000
-    const safeEntryPrice = this.liquidationPrice * 2; // 60,000
-    
-    // حساب الحد الأقصى للمبلغ الآمن (نترك هامش أمان 20%)
+    const safeEntryPrice = this.liquidationPrice * 2;
     const safeCapital = this.initialCapital * 0.8;
-    
-    // تقسيم على 8 شبكات
     return safeCapital / this.gridCount;
   }
   
   getPositionSize(currentPrice: number, availableCapital: number): number {
-    // التأكد من عدم تجاوز الحد الأقصى للشبكة الواحدة
     const maxAllowed = Math.min(this.maxPositionPerGrid, availableCapital * 0.9);
-    
-    // حساب كمية البيتكوين التي يمكن شراؤها
     return (maxAllowed * this.leverage) / currentPrice;
   }
   
@@ -149,9 +138,9 @@ class RiskManager {
     const profitPercentage = ((currentPrice - buyPrice) / buyPrice) * 100;
     
     if (marketTrend === 'bullish') {
-      return profitPercentage >= 15; // 15% ربح في السوق الصاعد
+      return profitPercentage >= 15;
     } else {
-      return profitPercentage >= 8; // 8% ربح في السوق الهابط
+      return profitPercentage >= 8;
     }
   }
 }
@@ -169,19 +158,15 @@ const analyzeMarketTrend = (data: BacktestData[], indicators: TechnicalIndicator
   let bullishSignals = 0;
   let bearishSignals = 0;
   
-  // تحليل المتوسطات المتحركة
   if (currentSMA20 > currentSMA50) bullishSignals++;
   else bearishSignals++;
   
-  // تحليل RSI
   if (currentRSI < 50) bearishSignals++;
   else if (currentRSI > 50) bullishSignals++;
   
-  // تحليل MACD
   if (macdLine > macdSignal) bullishSignals++;
   else bearishSignals++;
   
-  // تحليل الاتجاه العام للسعر (آخر 10 شموع)
   const recentPrices = data.slice(Math.max(0, index - 9), index + 1).map(d => d.close);
   const priceSlope = (recentPrices[recentPrices.length - 1] - recentPrices[0]) / recentPrices.length;
   
@@ -189,6 +174,107 @@ const analyzeMarketTrend = (data: BacktestData[], indicators: TechnicalIndicator
   else bearishSignals++;
   
   return bullishSignals > bearishSignals ? 'bullish' : 'bearish';
+};
+
+// تحليل إشارات هبوط السوق
+const detectMarketDownturn = (data: BacktestData[], indicators: TechnicalIndicators, index: number): { shouldSell: boolean; reason: string; confidence: number } => {
+  if (index < 50) return { shouldSell: false, reason: 'بيانات غير كافية', confidence: 0 };
+  
+  const currentRSI = indicators.rsi[index];
+  const currentSMA20 = indicators.sma20[index];
+  const currentSMA50 = indicators.sma50[index];
+  const prevSMA20 = indicators.sma20[index - 1];
+  const prevSMA50 = indicators.sma50[index - 1];
+  const macdLine = indicators.macd.macd[index];
+  const macdSignal = indicators.macd.signal[index];
+  const prevMACD = indicators.macd.macd[index - 1];
+  const prevMACDSignal = indicators.macd.signal[index - 1];
+  const bollingerUpper = indicators.bollinger.upper[index];
+  const currentPrice = data[index].close;
+  
+  let sellScore = 0;
+  let reasons: string[] = [];
+  
+  // 1. RSI في منطقة ذروة الشراء
+  if (currentRSI > 70) {
+    sellScore += 3;
+    reasons.push('RSI في ذروة الشراء (>70)');
+  } else if (currentRSI > 60) {
+    sellScore += 1;
+    reasons.push('RSI مرتفع (>60)');
+  }
+  
+  // 2. كسر المتوسط المتحرك للأسفل
+  if (currentSMA20 < currentSMA50 && prevSMA20 >= prevSMA50) {
+    sellScore += 4;
+    reasons.push('كسر SMA20 تحت SMA50');
+  }
+  
+  // 3. MACD سلبي أو يتجه للانخفاض
+  if (macdLine < macdSignal && prevMACD >= prevMACDSignal) {
+    sellScore += 3;
+    reasons.push('MACD كسر تحت خط الإشارة');
+  }
+  
+  // 4. السعر قريب من خط بولينجر العلوي (ذروة شراء)
+  if (currentPrice >= bollingerUpper * 0.98) {
+    sellScore += 2;
+    reasons.push('السعر قريب من خط بولينجر العلوي');
+  }
+  
+  // 5. انخفاض حاد في الحجم (ضعف في الزخم)
+  const avgVolume = data.slice(Math.max(0, index - 10), index).reduce((sum, d) => sum + d.volume, 0) / 10;
+  if (data[index].volume < avgVolume * 0.7) {
+    sellScore += 1;
+    reasons.push('انخفاض حجم التداول');
+  }
+  
+  // 6. تحليل الشموع - شمعة هابطة قوية
+  const currentCandle = data[index];
+  const bodySize = Math.abs(currentCandle.close - currentCandle.open);
+  const candleRange = currentCandle.high - currentCandle.low;
+  const bodyPercentage = bodySize / candleRange;
+  
+  if (currentCandle.close < currentCandle.open && bodyPercentage > 0.7) {
+    sellScore += 2;
+    reasons.push('شمعة هابطة قوية');
+  }
+  
+  // 7. نمط هبوط متتالي في الأسعار
+  const last5Prices = data.slice(index - 4, index + 1).map(d => d.close);
+  const decliningCount = last5Prices.reduce((count, price, i) => {
+    if (i > 0 && price < last5Prices[i - 1]) count++;
+    return count;
+  }, 0);
+  
+  if (decliningCount >= 3) {
+    sellScore += 2;
+    reasons.push(`انخفاض متتالي في ${decliningCount} من آخر 5 شموع`);
+  }
+  
+  // 8. RSI يشكل divergence هابط
+  const priceHigh = Math.max(...data.slice(index - 10, index + 1).map(d => d.high));
+  const rsiHigh = Math.max(...indicators.rsi.slice(index - 10, index + 1).filter(r => !isNaN(r)));
+  const currentPricePosition = currentPrice / priceHigh;
+  const currentRSIPosition = currentRSI / rsiHigh;
+  
+  if (currentPricePosition > 0.95 && currentRSIPosition < 0.9) {
+    sellScore += 2;
+    reasons.push('تباعد هابط بين السعر و RSI');
+  }
+  
+  // حساب مستوى الثقة
+  const confidence = Math.min(sellScore * 10, 100);
+  
+  // قرار البيع: نحتاج نقاط كافية (4 أو أكثر)
+  const shouldSell = sellScore >= 4;
+  const reason = reasons.length > 0 ? reasons.join(' | ') : 'لا توجد إشارات بيع قوية';
+  
+  if (shouldSell) {
+    console.log(`🔴 إشارة بيع قوية - النقاط: ${sellScore}, الأسباب: ${reason}, الثقة: ${confidence}%`);
+  }
+  
+  return { shouldSell, reason, confidence };
 };
 
 // Advanced Trading Strategy with Grid System
@@ -212,34 +298,34 @@ const generateSignals = (data: BacktestData[], indicators: TechnicalIndicators):
     const macdLine = indicators.macd.macd[i];
     const macdSignal = indicators.macd.signal[i];
     const bollingerLower = indicators.bollinger.lower[i];
-    const bollingerUpper = indicators.bollinger.upper[i];
     
+    // فحص إشارات البيع أولاً
+    const sellAnalysis = detectMarketDownturn(data, indicators, i);
+    if (sellAnalysis.shouldSell) {
+      signal = 'sell';
+      signals.push(signal);
+      continue;
+    }
+    
+    // إشارات الشراء
     let buyScore = 0;
     
-    // إشارات الشراء القوية
-    // 1. RSI في منطقة ذروة البيع
     if (currentRSI < 35) buyScore += 2;
     else if (currentRSI < 45) buyScore += 1;
     
-    // 2. كسر المتوسط المتحرك للأعلى
     if (currentSMA20 > currentSMA50 && prevSMA20 <= prevSMA50) buyScore += 3;
     
-    // 3. MACD إيجابي
     if (macdLine > macdSignal && indicators.macd.macd[i-1] <= indicators.macd.signal[i-1]) buyScore += 2;
     
-    // 4. السعر قريب من خط بولينجر السفلي
     if (currentPrice <= bollingerLower * 1.02) buyScore += 2;
     
-    // 5. انخفاض حاد في السعر (فرصة شراء)
     const priceDropPercent = ((data[i-5]?.close || currentPrice) - currentPrice) / (data[i-5]?.close || currentPrice) * 100;
     if (priceDropPercent > 3) buyScore += 1;
     if (priceDropPercent > 5) buyScore += 2;
     
-    // 6. حجم التداول مرتفع
     const avgVolume = data.slice(Math.max(0, i-10), i).reduce((sum, d) => sum + d.volume, 0) / 10;
     if (data[i].volume > avgVolume * 1.5) buyScore += 1;
     
-    // قرار الشراء: نحتاج نقاط كافية
     if (buyScore >= 4) {
       signal = 'buy';
     }
@@ -261,7 +347,7 @@ interface Position {
 
 // Run Enhanced Backtest with Risk Management
 export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
-  console.log('Starting enhanced backtest with risk management...');
+  console.log('Starting enhanced backtest with intelligent sell strategy...');
   
   const initialCapital = 10000;
   const riskManager = new RiskManager(initialCapital);
@@ -274,7 +360,6 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
   let gridLevel = 0;
   let maxEquity = initialCapital;
   
-  // Calculate indicators
   const indicators = calculateIndicators(data);
   const signals = generateSignals(data, indicators);
   
@@ -284,11 +369,9 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     const price = currentData.close;
     const marketTrend = analyzeMarketTrend(data, indicators, i);
     
-    // حساب القيمة الحالية للمحفظة
     const positionsValue = positions.reduce((sum, pos) => sum + (pos.quantity * price), 0);
     const currentEquity = capital + positionsValue;
     
-    // تحديث أقصى قيمة وحساب الانخفاض
     maxEquity = Math.max(maxEquity, currentEquity);
     const drawdown = (maxEquity - currentEquity) / maxEquity * 100;
     
@@ -301,7 +384,7 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     // إشارة شراء - استخدام نظام الشبكة
     if (signal === 'buy' && capital > 100 && gridLevel < 8) {
       const positionSize = riskManager.getPositionSize(price, capital);
-      const requiredCapital = (positionSize * price) / 2; // مع الرافعة 2x
+      const requiredCapital = (positionSize * price) / 2;
       
       if (capital >= requiredCapital) {
         const position: Position = {
@@ -323,20 +406,23 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
           quantity: positionSize
         });
         
-        console.log(`شراء في الشبكة ${gridLevel}: السعر ${price.toFixed(2)}, الكمية: ${positionSize.toFixed(6)}`);
+        console.log(`🟢 شراء في الشبكة ${gridLevel}: السعر ${price.toFixed(2)}, الكمية: ${positionSize.toFixed(6)}`);
       }
     }
     
-    // فحص مراكز الربح
-    const positionsToClose: number[] = [];
-    positions.forEach((position, index) => {
-      if (riskManager.shouldTakeProfit(price, position.entryPrice, marketTrend)) {
+    // إشارة بيع ذكية - بيع جميع المراكز عند توقع هبوط السوق
+    if (signal === 'sell' && positions.length > 0) {
+      const sellAnalysis = detectMarketDownturn(data, indicators, i);
+      
+      console.log(`🔴 بيع استراتيجي - السبب: ${sellAnalysis.reason}, مستوى الثقة: ${sellAnalysis.confidence}%`);
+      
+      // بيع جميع المراكز
+      positions.forEach(position => {
         const sellValue = position.quantity * price;
-        const entryValue = (position.quantity * position.entryPrice) / 2; // الرافعة 2x
+        const entryValue = (position.quantity * position.entryPrice) / 2;
         const pnl = sellValue - entryValue;
         
         capital += sellValue;
-        positionsToClose.push(index);
         
         trades.push({
           timestamp: currentData.timestamp,
@@ -346,15 +432,41 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
           pnl: pnl
         });
         
-        console.log(`بيع مربح: السعر ${price.toFixed(2)}, الربح: ${pnl.toFixed(2)}`);
-      }
-    });
-    
-    // إزالة المراكز المغلقة
-    positionsToClose.reverse().forEach(index => {
-      positions.splice(index, 1);
-      gridLevel = Math.max(0, gridLevel - 1);
-    });
+        console.log(`بيع ذكي: السعر ${price.toFixed(2)}, النتيجة: ${pnl > 0 ? 'ربح' : 'خسارة'} ${pnl.toFixed(2)}`);
+      });
+      
+      // مسح جميع المراكز وإعادة تعيين مستوى الشبكة
+      positions.length = 0;
+      gridLevel = 0;
+    } else {
+      // فحص مراكز الربح العادية (للأمان فقط)
+      const positionsToClose: number[] = [];
+      positions.forEach((position, index) => {
+        if (riskManager.shouldTakeProfit(price, position.entryPrice, marketTrend)) {
+          const sellValue = position.quantity * price;
+          const entryValue = (position.quantity * position.entryPrice) / 2;
+          const pnl = sellValue - entryValue;
+          
+          capital += sellValue;
+          positionsToClose.push(index);
+          
+          trades.push({
+            timestamp: currentData.timestamp,
+            type: 'sell',
+            price: price,
+            quantity: position.quantity,
+            pnl: pnl
+          });
+          
+          console.log(`بيع مربح عادي: السعر ${price.toFixed(2)}, الربح: ${pnl.toFixed(2)}`);
+        }
+      });
+      
+      positionsToClose.reverse().forEach(index => {
+        positions.splice(index, 1);
+        gridLevel = Math.max(0, gridLevel - 1);
+      });
+    }
   }
   
   // إغلاق المراكز المتبقية
@@ -412,12 +524,12 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
   );
   const sharpeRatio = returnStdDev > 0 ? (averageReturn / returnStdDev) * Math.sqrt(252) : 0;
   
-  console.log('Enhanced backtest completed:', {
+  console.log('Enhanced backtest with intelligent sell strategy completed:', {
     totalTrades: trades.length,
     totalReturn,
     winRate,
     finalCapital,
-    riskManagement: 'Grid System with 2x Leverage'
+    strategy: 'Grid System with Intelligent Market Downturn Detection'
   });
   
   return {
