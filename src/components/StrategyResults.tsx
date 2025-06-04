@@ -1,11 +1,12 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CandlestickChart } from '@/components/CandlestickChart';
+import CandlestickChart from '@/components/CandlestickChart';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BacktestData, StrategyMetrics, Trade } from '@/types/trading';
 import { ComposedChart, Line, ResponsiveContainer, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { format } from 'date-fns';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import FibonacciPivotTable from './FibonacciPivotTable';
 
 interface StrategyResultsProps {
