@@ -1,10 +1,12 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Activity } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Activity, ChevronLeft, ChevronRight } from 'lucide-react';
 import { StrategyMetrics, BacktestData } from '@/types/trading';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import CandlestickChart from './CandlestickChart';
+import { useState, useMemo } from 'react';
 
 interface StrategyResultsProps {
   results: StrategyMetrics;
@@ -12,6 +14,9 @@ interface StrategyResultsProps {
 }
 
 const StrategyResults = ({ results, data }: StrategyResultsProps) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const tradesPerPage = 20;
+  
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -25,28 +30,52 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
+  // تحسين البيانات للرسوم البيانية - أخذ عينة كل 10 نقاط للبيانات الكبيرة
+  const sampledData = useMemo(() => {
+    if (data.length <= 1000) return data;
+    const step = Math.ceil(data.length / 1000);
+    return data.filter((_, index) => index % step === 0);
+  }, [data]);
+
   // حساب قيمة المحفظة في وقت كل صفقة
   const getPortfolioValueAtTrade = (tradeIndex: number) => {
     const equityPoint = results.equityCurve.find((point, index) => {
       const tradeTimestamp = new Date(results.trades[tradeIndex].timestamp).getTime();
       const pointTimestamp = new Date(point.timestamp).getTime();
-      return Math.abs(pointTimestamp - tradeTimestamp) < 3600000; // نفس الساعة
+      return Math.abs(pointTimestamp - tradeTimestamp) < 3600000;
     });
     return equityPoint ? equityPoint.equity : results.initialCapital;
   };
 
-  const priceChartData = data.map((item, index) => ({
-    timestamp: new Date(item.timestamp).toLocaleDateString('ar'),
-    price: item.close,
-    index
-  }));
+  // تحضير البيانات مع التحسين
+  const priceChartData = useMemo(() => {
+    return sampledData.map((item, index) => ({
+      timestamp: new Date(item.timestamp).toLocaleDateString('ar'),
+      price: item.close,
+      index
+    }));
+  }, [sampledData]);
 
-  const equityChartData = results.equityCurve.map((item, index) => ({
-    timestamp: new Date(item.timestamp).toLocaleDateString('ar'),
-    equity: item.equity,
-    drawdown: -item.drawdown,
-    index
-  }));
+  const equityChartData = useMemo(() => {
+    return results.equityCurve.map((item, index) => ({
+      timestamp: new Date(item.timestamp).toLocaleDateString('ar'),
+      equity: item.equity,
+      drawdown: -item.drawdown,
+      index
+    }));
+  }, [results.equityCurve]);
+
+  // تقسيم الصفقات للصفحات
+  const totalPages = Math.ceil(results.trades.length / tradesPerPage);
+  const paginatedTrades = useMemo(() => {
+    const reversedTrades = [...results.trades].reverse();
+    const startIndex = (currentPage - 1) * tradesPerPage;
+    const endIndex = startIndex + tradesPerPage;
+    return reversedTrades.slice(startIndex, endIndex).map((trade, reverseIndex) => {
+      const actualIndex = results.trades.length - 1 - (startIndex + reverseIndex);
+      return { trade, actualIndex };
+    });
+  }, [results.trades, currentPage, tradesPerPage]);
 
   const MetricCard = ({ 
     title, 
@@ -94,6 +123,9 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
       <div className="text-center">
         <h2 className="text-3xl font-bold text-white mb-2">نتائج الاستراتيجية المحسنة</h2>
         <p className="text-gray-300">نظام إدارة المخاطر مع الشبكة والرافعة المالية 2x</p>
+        <p className="text-sm text-gray-400 mt-1">
+          تم تحليل {data.length.toLocaleString()} سجل • {results.trades.length} صفقة
+        </p>
       </div>
 
       {/* Key Metrics */}
@@ -173,7 +205,12 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
         </TabsList>
 
         <TabsContent value="candlestick" className="space-y-4">
-          <CandlestickChart data={data} trades={results.trades} />
+          <CandlestickChart data={sampledData} trades={results.trades} />
+          {data.length > 1000 && (
+            <div className="text-center text-sm text-yellow-400 bg-yellow-500/10 p-2 rounded">
+              تم عرض عينة من البيانات ({sampledData.length} من {data.length}) لتحسين الأداء
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="equity" className="space-y-4">
@@ -234,6 +271,11 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
               <CardTitle className="text-white">حركة سعر BTC/USDT</CardTitle>
               <CardDescription className="text-gray-300">
                 تطور سعر البيتكوين خلال فترة الاختبار
+                {data.length > 1000 && (
+                  <span className="block text-yellow-400 text-sm mt-1">
+                    عرض مبسط للبيانات الكبيرة ({sampledData.length} نقطة)
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -282,17 +324,50 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
               <CardTitle className="text-white">سجل الصفقات المفصل</CardTitle>
               <CardDescription className="text-gray-300">
                 تفاصيل دقيقة لجميع الصفقات ({results.trades.length} صفقة) مع قيم USDT ونسبة المحفظة والرافعة المالية
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm">
+                    الصفحة {currentPage} من {totalPages} • عرض {tradesPerPage} صفقة لكل صفحة
+                  </span>
+                </div>
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* أزرار التنقل */}
+              <div className="flex justify-between items-center mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="bg-white/10 border-white/20 text-white"
+                >
+                  <ChevronRight className="h-4 w-4 mr-1" />
+                  السابق
+                </Button>
+                
+                <span className="text-sm text-gray-300">
+                  عرض الصفقات {(currentPage - 1) * tradesPerPage + 1} - {Math.min(currentPage * tradesPerPage, results.trades.length)} من {results.trades.length}
+                </span>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="bg-white/10 border-white/20 text-white"
+                >
+                  التالي
+                  <ChevronLeft className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {results.trades.slice().reverse().map((trade, reverseIndex) => {
-                  const actualIndex = results.trades.length - 1 - reverseIndex;
+                {paginatedTrades.map(({ trade, actualIndex }) => {
                   const portfolioValue = getPortfolioValueAtTrade(actualIndex);
                   const tradeValueUSDT = trade.quantity * trade.price;
                   const portfolioPercentage = (tradeValueUSDT / portfolioValue) * 100;
-                  const leverage = 2; // الرافعة المالية المستخدمة
-                  const requiredCapital = tradeValueUSDT / leverage; // رأس المال المطلوب مع الرافعة
+                  const leverage = 2;
+                  const requiredCapital = tradeValueUSDT / leverage;
                   
                   return (
                     <div 
@@ -373,6 +448,51 @@ const StrategyResults = ({ results, data }: StrategyResultsProps) => {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* أزرار التنقل السفلية */}
+              <div className="flex justify-center items-center gap-2 mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="bg-white/10 border-white/20 text-white"
+                >
+                  الأولى
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="bg-white/10 border-white/20 text-white"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                
+                <span className="mx-4 text-sm text-gray-300">
+                  {currentPage} / {totalPages}
+                </span>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="bg-white/10 border-white/20 text-white"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="bg-white/10 border-white/20 text-white"
+                >
+                  الأخيرة
+                </Button>
               </div>
             </CardContent>
           </Card>

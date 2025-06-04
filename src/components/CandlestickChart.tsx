@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BacktestData, Trade } from '@/types/trading';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { ComposedChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Scatter, Line } from 'recharts';
+import { useMemo } from 'react';
 
 interface CandlestickChartProps {
   data: BacktestData[];
@@ -10,33 +11,35 @@ interface CandlestickChartProps {
 }
 
 const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
-  // تحضير البيانات للرسم البياني
-  const chartData = data.map((candle, index) => {
-    const buyTrade = trades.find(trade => 
-      trade.type === 'buy' && 
-      Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000 // في نفس الساعة
-    );
-    
-    const sellTrade = trades.find(trade => 
-      trade.type === 'sell' && 
-      Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000
-    );
+  // تحضير البيانات للرسم البياني مع التحسين
+  const chartData = useMemo(() => {
+    return data.map((candle, index) => {
+      const buyTrade = trades.find(trade => 
+        trade.type === 'buy' && 
+        Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000
+      );
+      
+      const sellTrade = trades.find(trade => 
+        trade.type === 'sell' && 
+        Math.abs(new Date(trade.timestamp).getTime() - new Date(candle.timestamp).getTime()) < 3600000
+      );
 
-    return {
-      timestamp: new Date(candle.timestamp).toLocaleDateString('ar'),
-      price: candle.close,
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
-      volume: candle.volume,
-      buySignal: buyTrade ? candle.close : null,
-      sellSignal: sellTrade ? candle.close : null,
-      buyPrice: buyTrade?.price || null,
-      sellPrice: sellTrade?.price || null,
-      index
-    };
-  });
+      return {
+        timestamp: new Date(candle.timestamp).toLocaleDateString('ar'),
+        price: candle.close,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+        buySignal: buyTrade ? candle.close : null,
+        sellSignal: sellTrade ? candle.close : null,
+        buyPrice: buyTrade?.price || null,
+        sellPrice: sellTrade?.price || null,
+        index
+      };
+    });
+  }, [data, trades]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -66,6 +69,11 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
     <Card className="bg-white/10 backdrop-blur-lg border-white/20">
       <CardHeader>
         <CardTitle className="text-white">الرسم البياني الخطي مع إشارات التداول</CardTitle>
+        {data.length > 1000 && (
+          <p className="text-sm text-yellow-400">
+            تم تحسين العرض للبيانات الكبيرة ({data.length.toLocaleString()} سجل)
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[600px] w-full">
@@ -141,12 +149,14 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
                 strokeWidth={2}
                 dot={false}
                 connectNulls={true}
+                isAnimationActive={false}
               />
               
               {/* إشارات الشراء */}
               <Scatter
                 dataKey="buySignal"
                 fill="#10B981"
+                isAnimationActive={false}
                 shape={(props) => {
                   if (!props.payload?.buySignal) return null;
                   return (
@@ -178,6 +188,7 @@ const CandlestickChart = ({ data, trades }: CandlestickChartProps) => {
               <Scatter
                 dataKey="sellSignal"
                 fill="#EF4444"
+                isAnimationActive={false}
                 shape={(props) => {
                   if (!props.payload?.sellSignal) return null;
                   return (
