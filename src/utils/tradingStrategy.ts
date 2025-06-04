@@ -1,5 +1,56 @@
 import { BacktestData, Trade, StrategyMetrics, TechnicalIndicators } from '@/types/trading';
 
+// ===== معاملات الاستراتيجية الرئيسية =====
+const STRATEGY_PARAMETERS = {
+  // معاملات رأس المال وإدارة المخاطر
+  INITIAL_CAPITAL: 10000,
+  LEVERAGE: 2,
+  LIQUIDATION_PRICE: 30000,
+  GRID_COUNT: 8,
+  SAFE_CAPITAL_RATIO: 0.8, // 80% من رأس المال للأمان
+  POSITION_CAPITAL_RATIO: 0.9, // 90% من رأس المال المتاح لكل صفقة
+  
+  // معاملات المؤشرات التقنية
+  SMA_SHORT_PERIOD: 20,
+  SMA_LONG_PERIOD: 50,
+  RSI_PERIOD: 14,
+  BOLLINGER_PERIOD: 20,
+  BOLLINGER_STD_DEV: 2,
+  EMA_FAST: 12,
+  EMA_SLOW: 26,
+  MACD_SIGNAL: 9,
+  
+  // معاملات إشارات الشراء
+  BUY_SIGNALS: {
+    RSI_OVERSOLD_STRONG: 35,
+    RSI_OVERSOLD_WEAK: 45,
+    BOLLINGER_LOWER_BUFFER: 1.02, // 2% فوق الخط السفلي
+    PRICE_DROP_THRESHOLD_1: 3, // 3%
+    PRICE_DROP_THRESHOLD_2: 5, // 5%
+    VOLUME_MULTIPLIER: 1.5, // 1.5x من المتوسط
+    VOLUME_PERIOD: 10,
+    MIN_BUY_SCORE: 4, // الحد الأدنى لنقاط الشراء
+  },
+  
+  // معاملات إشارات البيع
+  SELL_SIGNALS: {
+    RSI_OVERBOUGHT_STRONG: 70,
+    RSI_OVERBOUGHT_MEDIUM: 60,
+    BOLLINGER_UPPER_BUFFER: 0.98, // 98% من الخط العلوي
+    VOLUME_DROP_THRESHOLD: 0.7, // انخفاض الحجم إلى 70%
+    CANDLE_BODY_THRESHOLD: 0.7, // 70% من نطاق الشمعة
+    DECLINING_CANDLES_THRESHOLD: 3, // 3 شموع متتالية هابطة
+    PRICE_HIGH_POSITION: 0.95, // 95% من أعلى سعر
+    RSI_HIGH_POSITION: 0.9, // 90% من أعلى RSI
+    MIN_SELL_SCORE: 4, // الحد الأدنى لنقاط البيع
+    LOOKBACK_PERIOD: 10, // فترة النظر للخلف للتحليل
+  },
+  
+  // معاملات التحليل العام
+  MIN_DATA_POINTS: 50, // الحد الأدنى لنقاط البيانات للتحليل
+  TREND_ANALYSIS_PERIOD: 9, // فترة تحليل الاتجاه
+};
+
 // Calculate Simple Moving Average
 const calculateSMA = (prices: number[], period: number): number[] => {
   const sma: number[] = [];
@@ -15,7 +66,7 @@ const calculateSMA = (prices: number[], period: number): number[] => {
 };
 
 // Calculate RSI
-const calculateRSI = (prices: number[], period: number = 14): number[] => {
+const calculateRSI = (prices: number[], period: number = STRATEGY_PARAMETERS.RSI_PERIOD): number[] => {
   const rsi: number[] = [];
   const gains: number[] = [];
   const losses: number[] = [];
@@ -47,10 +98,10 @@ const calculateRSI = (prices: number[], period: number = 14): number[] => {
 
 // Calculate MACD
 const calculateMACD = (prices: number[]): { macd: number[]; signal: number[]; histogram: number[] } => {
-  const ema12 = calculateEMA(prices, 12);
-  const ema26 = calculateEMA(prices, 26);
+  const ema12 = calculateEMA(prices, STRATEGY_PARAMETERS.EMA_FAST);
+  const ema26 = calculateEMA(prices, STRATEGY_PARAMETERS.EMA_SLOW);
   const macd = ema12.map((val, i) => val - ema26[i]);
-  const signal = calculateEMA(macd, 9);
+  const signal = calculateEMA(macd, STRATEGY_PARAMETERS.MACD_SIGNAL);
   const histogram = macd.map((val, i) => val - signal[i]);
   
   return { macd, signal, histogram };
@@ -73,7 +124,7 @@ const calculateEMA = (prices: number[], period: number): number[] => {
 };
 
 // Calculate Bollinger Bands
-const calculateBollingerBands = (prices: number[], period: number = 20, stdDev: number = 2) => {
+const calculateBollingerBands = (prices: number[], period: number = STRATEGY_PARAMETERS.BOLLINGER_PERIOD, stdDev: number = STRATEGY_PARAMETERS.BOLLINGER_STD_DEV) => {
   const sma = calculateSMA(prices, period);
   const upper: number[] = [];
   const lower: number[] = [];
@@ -101,8 +152,8 @@ const calculateIndicators = (data: BacktestData[]): TechnicalIndicators => {
   const closePrices = data.map(d => d.close);
   
   return {
-    sma20: calculateSMA(closePrices, 20),
-    sma50: calculateSMA(closePrices, 50),
+    sma20: calculateSMA(closePrices, STRATEGY_PARAMETERS.SMA_SHORT_PERIOD),
+    sma50: calculateSMA(closePrices, STRATEGY_PARAMETERS.SMA_LONG_PERIOD),
     rsi: calculateRSI(closePrices),
     macd: calculateMACD(closePrices),
     bollinger: calculateBollingerBands(closePrices)
@@ -112,37 +163,38 @@ const calculateIndicators = (data: BacktestData[]): TechnicalIndicators => {
 // Risk Management System with Grid Strategy
 class RiskManager {
   private initialCapital: number;
-  private leverage: number = 2;
-  private liquidationPrice: number = 30000;
-  private gridCount: number = 8;
+  private leverage: number;
+  private liquidationPrice: number;
+  private gridCount: number;
   private maxPositionPerGrid: number;
   
   constructor(initialCapital: number) {
     this.initialCapital = initialCapital;
+    this.leverage = STRATEGY_PARAMETERS.LEVERAGE;
+    this.liquidationPrice = STRATEGY_PARAMETERS.LIQUIDATION_PRICE;
+    this.gridCount = STRATEGY_PARAMETERS.GRID_COUNT;
     this.maxPositionPerGrid = this.calculateMaxPositionPerGrid();
   }
   
   private calculateMaxPositionPerGrid(): number {
     const safeEntryPrice = this.liquidationPrice * 2;
-    const safeCapital = this.initialCapital * 0.8;
+    const safeCapital = this.initialCapital * STRATEGY_PARAMETERS.SAFE_CAPITAL_RATIO;
     return safeCapital / this.gridCount;
   }
   
   getPositionSize(currentPrice: number, availableCapital: number): number {
-    const maxAllowed = Math.min(this.maxPositionPerGrid, availableCapital * 0.9);
+    const maxAllowed = Math.min(this.maxPositionPerGrid, availableCapital * STRATEGY_PARAMETERS.POSITION_CAPITAL_RATIO);
     return (maxAllowed * this.leverage) / currentPrice;
   }
   
-  // إزالة شروط النسب المئوية والاعتماد فقط على التحليل الفني
   shouldTakeProfit(currentPrice: number, buyPrice: number): boolean {
-    // البيع فقط إذا كان هناك ربح - لا نشترط نسبة معينة
     return currentPrice > buyPrice;
   }
 }
 
 // Market Trend Analysis
 const analyzeMarketTrend = (data: BacktestData[], indicators: TechnicalIndicators, index: number): 'bullish' | 'bearish' => {
-  if (index < 50) return 'bullish';
+  if (index < STRATEGY_PARAMETERS.SMA_LONG_PERIOD) return 'bullish';
   
   const currentSMA20 = indicators.sma20[index];
   const currentSMA50 = indicators.sma50[index];
@@ -162,7 +214,7 @@ const analyzeMarketTrend = (data: BacktestData[], indicators: TechnicalIndicator
   if (macdLine > macdSignal) bullishSignals++;
   else bearishSignals++;
   
-  const recentPrices = data.slice(Math.max(0, index - 9), index + 1).map(d => d.close);
+  const recentPrices = data.slice(Math.max(0, index - STRATEGY_PARAMETERS.TREND_ANALYSIS_PERIOD), index + 1).map(d => d.close);
   const priceSlope = (recentPrices[recentPrices.length - 1] - recentPrices[0]) / recentPrices.length;
   
   if (priceSlope > 0) bullishSignals++;
@@ -173,7 +225,7 @@ const analyzeMarketTrend = (data: BacktestData[], indicators: TechnicalIndicator
 
 // تحليل إشارات هبوط السوق
 const detectMarketDownturn = (data: BacktestData[], indicators: TechnicalIndicators, index: number): { shouldSell: boolean; reason: string; confidence: number } => {
-  if (index < 50) return { shouldSell: false, reason: 'بيانات غير كافية', confidence: 0 };
+  if (index < STRATEGY_PARAMETERS.MIN_DATA_POINTS) return { shouldSell: false, reason: 'بيانات غير كافية', confidence: 0 };
   
   const currentRSI = indicators.rsi[index];
   const currentSMA20 = indicators.sma20[index];
@@ -191,12 +243,12 @@ const detectMarketDownturn = (data: BacktestData[], indicators: TechnicalIndicat
   let reasons: string[] = [];
   
   // 1. RSI في منطقة ذروة الشراء
-  if (currentRSI > 70) {
+  if (currentRSI > STRATEGY_PARAMETERS.SELL_SIGNALS.RSI_OVERBOUGHT_STRONG) {
     sellScore += 3;
-    reasons.push('RSI في ذروة الشراء (>70)');
-  } else if (currentRSI > 60) {
+    reasons.push(`RSI في ذروة الشراء (>${STRATEGY_PARAMETERS.SELL_SIGNALS.RSI_OVERBOUGHT_STRONG})`);
+  } else if (currentRSI > STRATEGY_PARAMETERS.SELL_SIGNALS.RSI_OVERBOUGHT_MEDIUM) {
     sellScore += 1;
-    reasons.push('RSI مرتفع (>60)');
+    reasons.push(`RSI مرتفع (>${STRATEGY_PARAMETERS.SELL_SIGNALS.RSI_OVERBOUGHT_MEDIUM})`);
   }
   
   // 2. كسر المتوسط المتحرك للأسفل
@@ -212,14 +264,14 @@ const detectMarketDownturn = (data: BacktestData[], indicators: TechnicalIndicat
   }
   
   // 4. السعر قريب من خط بولينجر العلوي (ذروة شراء)
-  if (currentPrice >= bollingerUpper * 0.98) {
+  if (currentPrice >= bollingerUpper * STRATEGY_PARAMETERS.SELL_SIGNALS.BOLLINGER_UPPER_BUFFER) {
     sellScore += 2;
     reasons.push('السعر قريب من خط بولينجر العلوي');
   }
   
   // 5. انخفاض حاد في الحجم (ضعف في الزخم)
-  const avgVolume = data.slice(Math.max(0, index - 10), index).reduce((sum, d) => sum + d.volume, 0) / 10;
-  if (data[index].volume < avgVolume * 0.7) {
+  const avgVolume = data.slice(Math.max(0, index - STRATEGY_PARAMETERS.SELL_SIGNALS.LOOKBACK_PERIOD), index).reduce((sum, d) => sum + d.volume, 0) / STRATEGY_PARAMETERS.SELL_SIGNALS.LOOKBACK_PERIOD;
+  if (data[index].volume < avgVolume * STRATEGY_PARAMETERS.SELL_SIGNALS.VOLUME_DROP_THRESHOLD) {
     sellScore += 1;
     reasons.push('انخفاض حجم التداول');
   }
@@ -230,7 +282,7 @@ const detectMarketDownturn = (data: BacktestData[], indicators: TechnicalIndicat
   const candleRange = currentCandle.high - currentCandle.low;
   const bodyPercentage = bodySize / candleRange;
   
-  if (currentCandle.close < currentCandle.open && bodyPercentage > 0.7) {
+  if (currentCandle.close < currentCandle.open && bodyPercentage > STRATEGY_PARAMETERS.SELL_SIGNALS.CANDLE_BODY_THRESHOLD) {
     sellScore += 2;
     reasons.push('شمعة هابطة قوية');
   }
@@ -242,18 +294,18 @@ const detectMarketDownturn = (data: BacktestData[], indicators: TechnicalIndicat
     return count;
   }, 0);
   
-  if (decliningCount >= 3) {
+  if (decliningCount >= STRATEGY_PARAMETERS.SELL_SIGNALS.DECLINING_CANDLES_THRESHOLD) {
     sellScore += 2;
     reasons.push(`انخفاض متتالي في ${decliningCount} من آخر 5 شموع`);
   }
   
   // 8. RSI يشكل divergence هابط
-  const priceHigh = Math.max(...data.slice(index - 10, index + 1).map(d => d.high));
-  const rsiHigh = Math.max(...indicators.rsi.slice(index - 10, index + 1).filter(r => !isNaN(r)));
+  const priceHigh = Math.max(...data.slice(index - STRATEGY_PARAMETERS.SELL_SIGNALS.LOOKBACK_PERIOD, index + 1).map(d => d.high));
+  const rsiHigh = Math.max(...indicators.rsi.slice(index - STRATEGY_PARAMETERS.SELL_SIGNALS.LOOKBACK_PERIOD, index + 1).filter(r => !isNaN(r)));
   const currentPricePosition = currentPrice / priceHigh;
   const currentRSIPosition = currentRSI / rsiHigh;
   
-  if (currentPricePosition > 0.95 && currentRSIPosition < 0.9) {
+  if (currentPricePosition > STRATEGY_PARAMETERS.SELL_SIGNALS.PRICE_HIGH_POSITION && currentRSIPosition < STRATEGY_PARAMETERS.SELL_SIGNALS.RSI_HIGH_POSITION) {
     sellScore += 2;
     reasons.push('تباعد هابط بين السعر و RSI');
   }
@@ -261,8 +313,8 @@ const detectMarketDownturn = (data: BacktestData[], indicators: TechnicalIndicat
   // حساب مستوى الثقة
   const confidence = Math.min(sellScore * 10, 100);
   
-  // قرار البيع: نحتاج نقاط كافية (4 أو أكثر)
-  const shouldSell = sellScore >= 4;
+  // قرار البيع: نحتاج نقاط كافية
+  const shouldSell = sellScore >= STRATEGY_PARAMETERS.SELL_SIGNALS.MIN_SELL_SCORE;
   const reason = reasons.length > 0 ? reasons.join(' | ') : 'لا توجد إشارات بيع قوية';
   
   if (shouldSell) {
@@ -279,7 +331,7 @@ const generateSignals = (data: BacktestData[], indicators: TechnicalIndicators):
   for (let i = 0; i < data.length; i++) {
     let signal: 'buy' | 'sell' | 'hold' = 'hold';
     
-    if (i < 50) {
+    if (i < STRATEGY_PARAMETERS.MIN_DATA_POINTS) {
       signals.push(signal);
       continue;
     }
@@ -305,23 +357,23 @@ const generateSignals = (data: BacktestData[], indicators: TechnicalIndicators):
     // إشارات الشراء
     let buyScore = 0;
     
-    if (currentRSI < 35) buyScore += 2;
-    else if (currentRSI < 45) buyScore += 1;
+    if (currentRSI < STRATEGY_PARAMETERS.BUY_SIGNALS.RSI_OVERSOLD_STRONG) buyScore += 2;
+    else if (currentRSI < STRATEGY_PARAMETERS.BUY_SIGNALS.RSI_OVERSOLD_WEAK) buyScore += 1;
     
     if (currentSMA20 > currentSMA50 && prevSMA20 <= prevSMA50) buyScore += 3;
     
     if (macdLine > macdSignal && indicators.macd.macd[i-1] <= indicators.macd.signal[i-1]) buyScore += 2;
     
-    if (currentPrice <= bollingerLower * 1.02) buyScore += 2;
+    if (currentPrice <= bollingerLower * STRATEGY_PARAMETERS.BUY_SIGNALS.BOLLINGER_LOWER_BUFFER) buyScore += 2;
     
     const priceDropPercent = ((data[i-5]?.close || currentPrice) - currentPrice) / (data[i-5]?.close || currentPrice) * 100;
-    if (priceDropPercent > 3) buyScore += 1;
-    if (priceDropPercent > 5) buyScore += 2;
+    if (priceDropPercent > STRATEGY_PARAMETERS.BUY_SIGNALS.PRICE_DROP_THRESHOLD_1) buyScore += 1;
+    if (priceDropPercent > STRATEGY_PARAMETERS.BUY_SIGNALS.PRICE_DROP_THRESHOLD_2) buyScore += 2;
     
-    const avgVolume = data.slice(Math.max(0, i-10), i).reduce((sum, d) => sum + d.volume, 0) / 10;
-    if (data[i].volume > avgVolume * 1.5) buyScore += 1;
+    const avgVolume = data.slice(Math.max(0, i-STRATEGY_PARAMETERS.BUY_SIGNALS.VOLUME_PERIOD), i).reduce((sum, d) => sum + d.volume, 0) / STRATEGY_PARAMETERS.BUY_SIGNALS.VOLUME_PERIOD;
+    if (data[i].volume > avgVolume * STRATEGY_PARAMETERS.BUY_SIGNALS.VOLUME_MULTIPLIER) buyScore += 1;
     
-    if (buyScore >= 4) {
+    if (buyScore >= STRATEGY_PARAMETERS.BUY_SIGNALS.MIN_BUY_SCORE) {
       signal = 'buy';
     }
     
@@ -344,9 +396,9 @@ interface Position {
 export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
   console.log('Starting enhanced backtest with profit-only selling strategy...');
   
-  const initialCapital = 10000;
+  const initialCapital = STRATEGY_PARAMETERS.INITIAL_CAPITAL;
   const riskManager = new RiskManager(initialCapital);
-  const leverage = 2;
+  const leverage = STRATEGY_PARAMETERS.LEVERAGE;
   
   let capital = initialCapital;
   const positions: Position[] = [];
@@ -385,7 +437,7 @@ export const runBacktest = (data: BacktestData[]): StrategyMetrics => {
     });
     
     // إشارة شراء - استخدام نظام الشبكة
-    if (signal === 'buy' && capital > 100 && gridLevel < 8) {
+    if (signal === 'buy' && capital > 100 && gridLevel < STRATEGY_PARAMETERS.GRID_COUNT) {
       const positionSize = riskManager.getPositionSize(price, capital);
       const requiredCapital = (positionSize * price) / leverage;
       
